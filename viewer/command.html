@@ -59,6 +59,7 @@
   .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
   .badge.off { color: var(--muted); }
   .badge.hot { background: #da3633; border-color: #da3633; color: #fff; }
+  .badge.live { background: #238636; border-color: #238636; color: #fff; }
   main {
     flex: 1; min-height: 0;
     display: grid;
@@ -203,6 +204,7 @@
     <span id="modeLabel" class="k">simulate</span>
     <span class="k">Sim step <b id="tval">0</b></span>
     <span id="fireBadge" class="badge off">No fire</span>
+    <span id="linkBadge" class="badge off">Polling</span>
     <a href="/">3D view</a>
     <a href="/editor.html">Map editor</a>
   </div>
@@ -322,6 +324,13 @@
   let reportTail = Promise.resolve();
   let reports = [];
   let reportsLive = false;
+  let linkLive = false;
+  let liveSock = null;
+  let liveWait = 0;
+  let liveTries = 0;
+  let timerLive = 0;
+  let timerTime = 0;
+  let timerReports = 0;
   let searchLive = false;
   let searchedIds = new Set();
   let unsearchedItems = [];
@@ -1089,6 +1098,71 @@
     return job;
   }
 
+  function armPolls() {
+    if (timerLive) clearInterval(timerLive);
+    if (timerTime) clearInterval(timerTime);
+    if (timerReports) clearInterval(timerReports);
+    const slow = linkLive ? 10000 : 0;
+    timerLive = setInterval(() => { pollLive(); }, slow || 2000);
+    timerTime = setInterval(() => { pollTimeline(); }, slow || 2000);
+    timerReports = setInterval(() => { pollReports(); }, slow || 3000);
+  }
+
+  function setLink(on) {
+    const badge = $("linkBadge");
+    if (badge) {
+      badge.textContent = on ? "Live" : "Polling";
+      badge.className = on ? "badge live" : "badge off";
+    }
+    if (linkLive === on && timerLive) return;
+    linkLive = on;
+    armPolls();
+  }
+
+  function queueLive() {
+    if (liveWait) return;
+    const delay = Math.min(30000, 1000 * (2 ** liveTries));
+    liveTries = Math.min(liveTries + 1, 5);
+    liveWait = setTimeout(() => {
+      liveWait = 0;
+      connectLive();
+    }, delay);
+  }
+
+  function connectLive() {
+    if (liveWait) { clearTimeout(liveWait); liveWait = 0; }
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    let sock;
+    try {
+      sock = new WebSocket(proto + "//" + location.host + "/ws/live");
+    } catch (err) {
+      queueLive();
+      return;
+    }
+    liveSock = sock;
+    sock.onopen = () => {
+      liveTries = 0;
+      setLink(true);
+    };
+    sock.onmessage = (ev) => {
+      let msg = null;
+      try { msg = JSON.parse(ev.data); } catch (err) { return; }
+      if (!msg || typeof msg.kind !== "string" || msg.kind === "ping") return;
+      if (msg.kind === "people") pollLive();
+      else if (msg.kind === "report") pollReports();
+      else if (msg.kind === "fire") {
+        pollLive();
+        loadBrief();
+      }
+    };
+    sock.onerror = () => {};
+    sock.onclose = () => {
+      if (liveSock === sock) liveSock = null;
+      setLink(false);
+      queueLive();
+    };
+  }
+
   function setCtrl(msg, isError) {
     const el = $("ctrlMsg");
     el.textContent = msg || "";
@@ -1757,7 +1831,8 @@
       $("bname").textContent = err.message || "Could not load the building.";
       showTimelineMessage("History unavailable.");
       pollReports();
-      setInterval(() => { pollReports(); }, 3000);
+      armPolls();
+      connectLive();
       return;
     }
     $("bname").textContent = building.building || "Building";
@@ -1769,9 +1844,8 @@
     loadBrief();
     pollTimeline();
     pollReports();
-    setInterval(() => { pollLive(); }, 2000);
-    setInterval(() => { pollTimeline(); }, 2000);
-    setInterval(() => { pollReports(); }, 3000);
+    armPolls();
+    connectLive();
     setInterval(() => { if (fireRunning) loadBrief(); }, 10000);
     requestAnimationFrame(() => drawFloors());
   }
@@ -1779,5 +1853,6 @@
   boot();
 })();
 </script>
+<script src="nav.js" defer></script>
 </body>
 </html>

@@ -23,6 +23,7 @@ from .core.grid import BuildingGrid
 from .core.model import ModelError, load_building, load_building_file
 from .core.routing import RouteField, best_room_cell
 from .services import store
+from .services import live
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_BUILDING = os.path.join(ROOT, "data", "buildings", "sample_building.json")
@@ -148,6 +149,7 @@ def upload_building(raw: dict = Body(...)):
     with lock:
         world = new_world
     store.log("building_upload", {"building": model["building"], "floors": model["levels"]})
+    live.publish("building", {})
     return {"ok": True, "warnings": model["warnings"] + new_world.grid.warnings}
 
 
@@ -185,6 +187,7 @@ def fire_start(room_id: str = Body(None, embed=True), level: int = Body(None, em
         t = world.sim.t
     store.log("fire_start", {"building": world.model["building"], "t": t, "room_id": room_id,
                              "level": level, "x": x, "y": y})
+    live.publish("fire", {"t": world.sim.t, "mode": world.sim.mode})
     return {"ok": True, "t": t}
 
 
@@ -197,6 +200,7 @@ def fire_mode(mode: str = Body(..., embed=True)):
     with lock:
         world.sim.mode = mode
     store.log("fire_mode", {"building": world.model["building"], "mode": mode})
+    live.publish("fire", {"t": world.sim.t, "mode": world.sim.mode})
     return {"ok": True, "mode": mode}
 
 
@@ -209,6 +213,7 @@ def fire_step(n: int = Body(1, embed=True)):
     store.log("fire_step", {"building": world.model["building"], "t": t,
                             "fire_rooms": sorted(k for k, v in rooms.items() if v == "fire"),
                             "smoke_rooms": sorted(k for k, v in rooms.items() if v == "smoke")})
+    live.publish("fire", {"t": world.sim.t, "mode": world.sim.mode})
     return {"ok": True, "t": t}
 
 
@@ -220,6 +225,7 @@ def fire_reset():
         _reports.reset(world)          # field reports, searched rooms, blocked cells, undo log
         world.refresh_routes()
     store.log("fire_reset", {"building": world.model["building"]})
+    live.publish("fire", {"t": world.sim.t, "mode": world.sim.mode})
     return {"ok": True}
 
 
@@ -328,6 +334,7 @@ app.include_router(_reports_router(lambda: world, lock))
 from .services.ai_edit import router as _ai_router  # noqa: E402
 
 app.include_router(_ai_router)
+app.include_router(live.router)
 
 # Static viewer last so /api/* wins.
 if os.path.isdir(VIEWER_DIR):

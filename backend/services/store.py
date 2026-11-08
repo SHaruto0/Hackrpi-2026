@@ -25,8 +25,10 @@ _client_lock = threading.Lock()
 _indexed: set[int] = set()
 
 _queue: queue.Queue = queue.Queue(maxsize=_QUEUE_MAX)
+_person_queue: queue.Queue = queue.Queue(maxsize=_QUEUE_MAX)
 _worker_lock = threading.Lock()
 _worker_started = False
+_person_worker_started = False
 
 _pose_lock = threading.Lock()
 _pose_at: dict[str, float] = {}
@@ -84,6 +86,7 @@ def _ensure_indexes(db) -> None:
         return
     db["events"].create_index([("kind", 1), ("ts", -1)], name="kind_ts")
     db["buildings"].create_index([("name", 1), ("version", -1)], name="name_version")
+    db["people"].create_index([("person_id", 1)], name="person_id", unique=True)
     _indexed.add(key)
 
 
@@ -168,6 +171,15 @@ def _ensure_worker() -> None:
         _worker_started = True
 
 
+def _ensure_person_worker() -> None:
+    global _person_worker_started
+    with _worker_lock:
+        if _person_worker_started:
+            return
+        threading.Thread(target=_person_worker, name="firesight-people", daemon=True).start()
+        _person_worker_started = True
+
+
 def _worker() -> None:
     while True:
         event = _queue.get()
@@ -184,6 +196,27 @@ def _insert_event(event: dict) -> None:
     if db is None:
         return
     db["events"].insert_one(dict(event))
+
+
+def _person_worker() -> None:
+    while True:
+        record = _person_queue.get()
+        try:
+            _upsert_person(record)
+        except Exception:
+            pass
+        finally:
+            _person_queue.task_done()
+
+
+def _upsert_person(record: dict) -> None:
+    db = get_db()
+    if db is None:
+        return
+    doc = {k: v for k, v in record.items() if k != "_id"}
+    pid = str(doc.get("person_id"))
+    doc["person_id"] = pid
+    db["people"].replace_one({"person_id": pid}, doc, upsert=True)
 
 
 def log(kind: str, doc: dict | None = None) -> None:
@@ -204,6 +237,59 @@ def log(kind: str, doc: dict | None = None) -> None:
         _queue.put_nowait(event)
     except Exception:
         return
+
+
+def save_person(record) -> None:
+    """Queue an upsert into "people" by person_id. No-op when disabled. Never raises."""
+    try:
+        if not enabled():
+            return
+        if not isinstance(record, dict):
+            return
+        payload = copy.deepcopy(record)
+        pid = payload.get("person_id")
+        if pid in (None, ""):
+            return
+        payload.pop("_id", None)
+        payload["person_id"] = str(pid)
+        _ensure_person_worker()
+        _person_queue.put_nowait(payload)
+    except Exception:
+        return
+
+
+def load_people() -> list:
+    """Check-ins from "people". [] when disabled or the read does not finish in 3 s."""
+    if not enabled():
+        return []
+    box: dict = {}
+
+    def _read() -> None:
+        try:
+            db = get_db()
+            if db is None:
+                box["rows"] = []
+                return
+            box["rows"] = list(db["people"].find({}))
+        except Exception:
+            box["rows"] = []
+
+    worker = threading.Thread(target=_read, name="firesight-load-people", daemon=True)
+    worker.start()
+    worker.join(_CONNECT_MS / 1000.0)
+    if worker.is_alive() or "rows" not in box:
+        return []
+    out = []
+    for row in box["rows"] or []:
+        if not isinstance(row, dict):
+            continue
+        rec = {k: v for k, v in row.items() if k != "_id"}
+        pid = rec.get("person_id")
+        if pid in (None, ""):
+            continue
+        rec["person_id"] = str(pid)
+        out.append(rec)
+    return out
 
 
 def flush(timeout: float = 5.0) -> None:

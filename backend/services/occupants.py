@@ -30,6 +30,34 @@ _STATUSES = ("safe", "trapped", "evacuating")
 # In-memory check-ins. Own lock, separate from the world lock.
 people = {}
 people_lock = threading.Lock()
+_people_hydrated = False
+_hydrate_lock = threading.Lock()
+
+
+def _hydrate_people() -> None:
+    """Fill `people` from Mongo once. Disabled Mongo leaves the dict unchanged."""
+    global _people_hydrated
+    if _people_hydrated:
+        return
+    with _hydrate_lock:
+        if _people_hydrated:
+            return
+        try:
+            from . import store
+            rows = store.load_people()
+        except Exception:
+            rows = []
+        _people_hydrated = True
+    if not rows:
+        return
+    with people_lock:
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            pid = row.get("person_id")
+            if pid in (None, "") or pid in people:
+                continue
+            people[pid] = dict(row)
 
 
 class PersonStatus(BaseModel):
@@ -349,6 +377,7 @@ def make_router(get_world, lock) -> APIRouter:
     def set_status(person_id: str, body: PersonStatus):
         if body.status not in _STATUSES:
             raise HTTPException(400, "status must be safe, trapped, or evacuating")
+        _hydrate_people()
         record = {
             "person_id": person_id,
             "status": body.status,
@@ -362,10 +391,14 @@ def make_router(get_world, lock) -> APIRouter:
             people[person_id] = record
         from . import store   # MongoDB Atlas incident log (no-op when not configured)
         store.log("person_status", dict(record))
+        store.save_person(dict(record))
+        from . import live                  # commander page updates instantly
+        live.publish("people", dict(record))
         return {"ok": True}
 
     @router.get("/api/people")
     def list_people():
+        _hydrate_people()
         with people_lock:
             return [dict(row) for row in people.values()]
 

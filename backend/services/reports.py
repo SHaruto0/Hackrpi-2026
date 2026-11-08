@@ -1060,6 +1060,11 @@ def apply(world, updates, by, text=None):
         })
     except Exception:
         pass
+    try:                                    # commander page refreshes instantly
+        from . import live
+        live.publish("report", {"id": report["id"], "by": by, "text": text, "changes": list(changes)})
+    except Exception:
+        pass
     return changes
 
 
