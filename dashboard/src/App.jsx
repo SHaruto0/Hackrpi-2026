@@ -367,6 +367,7 @@ export default function App() {
   const [glbUrl, setGlbUrl] = useState('/building.glb');
   const [showShell, setShowShell] = useState(true);
   const [simulating, setSimulating] = useState(false);
+  const [latestFrameB64, setLatestFrameB64] = useState(null);
 
   const wsRef = useRef(null);
 
@@ -402,6 +403,7 @@ export default function App() {
             setMayday(Boolean(data.firefighter.mayday));
           }
           if (data.audio_cue) setAudioCue(data.audio_cue);
+          if (data.latest_frame_b64) setLatestFrameB64(data.latest_frame_b64);
         } catch (err) {
           console.error('WS parse error:', err);
         }
@@ -641,6 +643,45 @@ export default function App() {
           <span style={{ color: '#ef4444', fontWeight: 700 }}>BLOCKED</span> and trigger live Dijkstra rerouting.
           Drag & drop any Polycam <code>.glb</code> file onto the window to load it.
         </div>
+
+        {/* LIVE HELMET CAMERA FEED (PiP inside Commander HUD) */}
+        {latestFrameB64 && (
+          <div
+            style={{
+              marginTop: 12,
+              background: '#090d16',
+              border: '1px solid rgba(34, 211, 238, 0.45)',
+              borderRadius: 10,
+              padding: 8,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 800,
+                color: '#22d3ee',
+                marginBottom: 6,
+                letterSpacing: 0.6,
+                display: 'flex',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span>📹 LIVE HELMET CAM (AR STREAM)</span>
+              <span style={{ color: '#10b981' }}>● LIVE</span>
+            </div>
+            <img
+              src={`data:image/jpeg;base64,${latestFrameB64}`}
+              alt="Firefighter Helmet Camera"
+              style={{
+                width: '100%',
+                height: 150,
+                objectFit: 'cover',
+                borderRadius: 6,
+                display: 'block',
+              }}
+            />
+          </div>
+        )}
       </div>
 
       {/* RIGHT HUD: WAYPOINT NODE LIST */}

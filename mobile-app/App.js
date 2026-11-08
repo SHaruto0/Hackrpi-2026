@@ -3,8 +3,10 @@ import {
   StyleSheet,
   Text,
   View,
+  Image,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   Dimensions,
   SafeAreaView,
   Platform,
@@ -18,13 +20,26 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 // Default to your laptop's detected Wi-Fi IP on port 8000
 const DEFAULT_WS_URL = 'ws://129.161.52.222:8000/ws/ar';
 
-// Audio cue voice lines (triggered by JSON flags from backend)
+// Quick-pick DCC Floor 2 rooms for Firefighter Target-Room Navigation
+const QUICK_DCC_ROOMS = [
+  { id: 'F2-232', short: 'Rm 232' },
+  { id: 'F2-234', short: 'Rm 234' },
+  { id: 'F2-236', short: 'Rm 235/236' },
+  { id: 'F2-238', short: 'Rm 238' },
+  { id: 'F2-239', short: 'Rm 239' },
+  { id: 'F2-240', short: 'Rm 240' },
+  { id: 'F2-218', short: '218 Lobby' },
+  { id: 'F2-2ST6', short: 'Stair 2ST6' },
+  { id: 'F2-308L', short: '308 Lecture' },
+];
+
+// Audio cue voice lines (triggered by JSON flags from centralized backend)
 const AUDIO_CUE_PHRASES = {
-  'system_online.mp3': 'Firesight Visual Positioning Online.',
-  'hazard_ahead_rerouting.mp3': 'Warning! Fire hazard reported ahead. Rerouting evacuation path.',
-  'route_recalculated.mp3': 'Evacuation route updated.',
-  'proceed_to_next_waypoint.mp3': 'Continue along Corridor 219 toward exit.',
-  'arrived_at_exit.mp3': 'You have reached the stairwell exit. Proceed to safety.',
+  'system_online.mp3': 'Firesight 3D D C C Navigation Online.',
+  'hazard_ahead_rerouting.mp3': 'Warning! Fire hazard reported ahead. Rerouting path immediately.',
+  'route_recalculated.mp3': 'Route updated with latest live fire data.',
+  'proceed_to_next_waypoint.mp3': 'Continue along the highlighted 3D path.',
+  'arrived_at_exit.mp3': 'You have reached your destination.',
   'mayday_transmitting.mp3': 'Mayday alert transmitted to Incident Command.',
   'mayday_acknowledged.mp3': 'Incident Commander acknowledged your Mayday.',
 };
@@ -36,10 +51,8 @@ function computeTurnAngleDeg(camPos, camQuat, nextWaypoint) {
   const dz = nextWaypoint[2] - camPos[2];
   if (Math.hypot(dx, dz) < 0.25) return 0;
 
-  // Target bearing in world (X, Z) where -Z is forward
   const targetYaw = Math.atan2(dx, -dz);
 
-  // Extract camera forward vector (-Z axis of camera in world) from quaternion [qx, qy, qz, qw]
   if (camQuat && camQuat.length === 4) {
     const [qx, qy, qz, qw] = camQuat;
     const lookX = -(2 * (qx * qz + qw * qy));
@@ -55,27 +68,39 @@ function computeTurnAngleDeg(camPos, camQuat, nextWaypoint) {
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
+  const [liveFrameUri, setLiveFrameUri] = useState(null);
+  const [useStreamOverlay, setUseStreamOverlay] = useState(true);
   const [wsUrl, setWsUrl] = useState(DEFAULT_WS_URL);
   const [connected, setConnected] = useState(false);
   const [localized, setLocalized] = useState(false);
-  const [position, setPosition] = useState([0.1, 0.0, 0.5]);
+
+  // Task 1 ('occupant' -> Escape to Closest Exit) vs Task 2 ('firefighter' -> Navigate to Target Room + Report Fire)
+  const [role, setRole] = useState('occupant');
+  const [targetRoomId, setTargetRoomId] = useState('F2-240');
+  const [alertBanner, setAlertBanner] = useState(null);
+
+  const [position, setPosition] = useState([0.0, 0.0, 0.0]);
   const [quaternion, setQuaternion] = useState([0, 0, 0, 1]);
-  const [currentLabel, setCurrentLabel] = useState('Room 232 (Scanning...)');
+  const [currentRoomId, setCurrentRoomId] = useState('F2-232');
+  const [currentLabel, setCurrentLabel] = useState('232 CLASSROOM');
   const [inliers, setInliers] = useState(0);
   const [latencyMs, setLatencyMs] = useState(0);
   const [nodes, setNodes] = useState([]);
   const [route, setRoute] = useState({
-    start_node: 'room_232',
-    start_label: 'Room 232 (Inside)',
-    target_exit: 'exit_west',
-    path_ids: ['room_232', 'door_232', 'corr_232_w', 'exit_west'],
+    role: 'occupant',
+    start_node: 'F2-232',
+    start_label: '232 CLASSROOM',
+    target_exit: 'F2-D25',
     path_coords: [
-      [0.1, 0.0, 0.5],
-      [-1.1, 0.0, -0.8],
-      [-2.0, 0.0, -4.3],
-      [-5.5, 0.0, -4.8],
+      [0.0, 0.0, 0.0],
+      [-5.2, 0.0, -4.8],
+      [-10.35, 0.0, -1.25],
     ],
-    total_distance_m: 9.4,
+    total_distance_m: 13.2,
+    instructions: ['Walk 7 m through 232 CLASSROOM', 'Walk 7 m through 218 LOBBY'],
+    fire_rooms: [],
+    smoke_rooms: [],
     reachable: true,
   });
   const [mayday, setMayday] = useState(false);
@@ -85,6 +110,16 @@ export default function App() {
   const cameraRef = useRef(null);
   const wsRef = useRef(null);
   const isCapturingRef = useRef(false);
+  const roleRef = useRef(role);
+  const targetRoomRef = useRef(targetRoomId);
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
+
+  useEffect(() => {
+    targetRoomRef.current = targetRoomId;
+  }, [targetRoomId]);
 
   // Animate glowing floor arrows
   useEffect(() => {
@@ -94,7 +129,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Connect to FastAPI /ws/ar WebSocket
+  // Connect to Centralized FastAPI /ws/ar WebSocket
   const connectWebSocket = (urlToConnect) => {
     if (wsRef.current) {
       try {
@@ -107,6 +142,13 @@ export default function App() {
 
       ws.onopen = () => {
         setConnected(true);
+        ws.send(
+          JSON.stringify({
+            type: 'set_mode',
+            role: roleRef.current,
+            target_room_id: targetRoomRef.current,
+          })
+        );
       };
       ws.onclose = () => {
         setConnected(false);
@@ -120,7 +162,11 @@ export default function App() {
           if (msg.nodes) setNodes(msg.nodes);
           if (msg.route) {
             setRoute(msg.route);
-            setCurrentLabel(msg.route.start_label || 'DCC 200 Level');
+            if (msg.route.start_node) setCurrentRoomId(msg.route.start_node);
+            if (msg.route.start_label) setCurrentLabel(msg.route.start_label);
+          }
+          if (msg.alert_banner) {
+            setAlertBanner(msg.alert_banner);
           }
           if (msg.localized) {
             setLocalized(true);
@@ -152,16 +198,39 @@ export default function App() {
     };
   }, []);
 
-  // Periodically grab frame from camera, compress to low-bandwidth JPEG, and send to backend
+  // Switch between Task 1 (Occupant Escape) and Task 2 (Firefighter Target Room)
+  const switchMode = (newRole, newTargetRoom = targetRoomId) => {
+    setRole(newRole);
+    if (newTargetRoom) setTargetRoomId(newTargetRoom);
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'set_mode',
+          role: newRole,
+          target_room_id: newTargetRoom,
+        })
+      );
+    }
+  };
+
+  // Report live fire or clear status from Firefighter phone -> updates Commander webpage + all phones
+  const sendFireReport = (kind, customRoomId = null) => {
+    const roomToReport = customRoomId || currentRoomId || 'F2-232';
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'report_fire',
+          room_id: roomToReport,
+          kind,
+        })
+      );
+    }
+  };
+
+  // Periodically grab 640x480 frame from camera, update live screen feed, and send to centralized server
   useEffect(() => {
     const interval = setInterval(async () => {
-      if (
-        !connected ||
-        !cameraRef.current ||
-        isCapturingRef.current ||
-        !wsRef.current ||
-        wsRef.current.readyState !== WebSocket.OPEN
-      ) {
+      if (!cameraRef.current || isCapturingRef.current) {
         return;
       }
       isCapturingRef.current = true;
@@ -169,14 +238,20 @@ export default function App() {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.35,
           base64: true,
-          skipProcessing: true,
           shutterSound: false,
         });
+        if (photo?.uri) {
+          setLiveFrameUri(photo.uri);
+        } else if (photo?.base64) {
+          setLiveFrameUri(`data:image/jpeg;base64,${photo.base64}`);
+        }
         if (photo?.base64 && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(
             JSON.stringify({
               type: 'frame',
               image_b64: photo.base64,
+              role: roleRef.current,
+              target_room_id: targetRoomRef.current,
             })
           );
         }
@@ -185,10 +260,10 @@ export default function App() {
       } finally {
         isCapturingRef.current = false;
       }
-    }, 1350);
+    }, 450);
 
     return () => clearInterval(interval);
-  }, [connected]);
+  }, [connected, cameraReady]);
 
   const sendMayday = (active) => {
     setMayday(active);
@@ -203,16 +278,29 @@ export default function App() {
     }
   };
 
-  // Next waypoint along Dijkstra route
+  // Pick next waypoint along the 3D DCC route at least ~1.2m ahead
   const nextWaypoint = useMemo(() => {
-    if (!route?.path_coords || route.path_coords.length === 0) return null;
-    return route.path_coords.length > 1 ? route.path_coords[1] : route.path_coords[0];
-  }, [route]);
+    const coords = route?.path_coords || [];
+    if (coords.length === 0) return null;
+    for (let i = 0; i < coords.length; i++) {
+      const pt = coords[i];
+      if (Math.hypot(pt[0] - position[0], pt[2] - position[2]) >= 1.2) {
+        return pt;
+      }
+    }
+    return coords[coords.length - 1];
+  }, [route, position]);
 
   const turnDeg = useMemo(
     () => computeTurnAngleDeg(position, quaternion, nextWaypoint),
     [position, quaternion, nextWaypoint]
   );
+
+  const fireRoomIds = useMemo(() => {
+    const s = new Set();
+    (route?.fire_rooms || []).forEach((r) => s.add(r.id));
+    return s;
+  }, [route]);
 
   if (!permission) {
     return <View style={styles.container} />;
@@ -221,9 +309,9 @@ export default function App() {
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.permissionContainer}>
-        <Text style={styles.permTitle}>FIRESIGHT // AR NAVIGATION</Text>
+        <Text style={styles.permTitle}>FIRESIGHT // 3D DCC NAVIGATION</Text>
         <Text style={styles.permSub}>
-          Firesight needs camera access to match live frames against the 3D mathematical map of DCC 200 Level.
+          Firesight uses your camera to localize inside the 3D model of Darrin Communications Center (DCC) and route around live fires.
         </Text>
         <TouchableOpacity style={styles.permButton} onPress={requestPermission}>
           <Text style={styles.permButtonText}>ENABLE AR CAMERA</Text>
@@ -233,29 +321,55 @@ export default function App() {
   }
 
   const shiftX = (turnDeg / 65) * (SCREEN_W * 0.25);
-  const mapX = (x) => 8 + ((x + 7) / 53) * 138;
-  const mapZ = (z) => 10 + ((z + 7) / 9) * 48;
+  const mapX = (x) => Math.max(4, Math.min(148, 22 + ((x + 12) / 56) * 124));
+  const mapZ = (z) => Math.max(4, Math.min(64, 38 + ((z + 10) / 18) * 28));
+  const primaryInstruction =
+    route?.instructions && route.instructions.length > 0
+      ? route.instructions[0]
+      : Math.abs(turnDeg) < 15
+      ? 'Proceed straight ahead'
+      : turnDeg > 0
+      ? `Turn right (${Math.round(turnDeg)}°)`
+      : `Turn left (${Math.round(Math.abs(turnDeg))}°)`;
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* 1. LIVE FULLSCREEN BACK CAMERA */}
+      {/* 1A. LIVE FULLSCREEN BACK CAMERA (640x480 fast VGA preset) */}
       <CameraView
         ref={cameraRef}
-        style={StyleSheet.absoluteFillObject}
+        style={styles.cameraFull}
         facing="back"
+        mode="picture"
+        pictureSize="640x480"
+        active={true}
         animateShutter={false}
+        onCameraReady={() => setCameraReady(true)}
       />
 
-      {/* 2. 3D PERSPECTIVE AR FLOOR ARROWS OVERLAY (Pure RN 3D Transforms - Crash Proof) */}
+      {/* 1B. GUARANTEED LIVE CAMERA FEED OVERLAY */}
+      {useStreamOverlay && liveFrameUri && (
+        <Image
+          source={{ uri: liveFrameUri }}
+          style={StyleSheet.absoluteFillObject}
+          resizeMode="cover"
+          fadeDuration={0}
+        />
+      )}
+
+      {/* 2. 3D PERSPECTIVE AR FLOOR ARROWS OVERLAY */}
       <View style={styles.arFloorContainer} pointerEvents="none">
         {[2, 1, 0].map((idx) => {
           const isLit = pulsePhase === idx;
           const scale = 1.0 - idx * 0.22;
           const offsetX = shiftX * ((idx + 1) / 3);
-          const color = !route.reachable
+          const baseColor = !route.reachable
             ? '#ef4444'
+            : role === 'firefighter'
+            ? isLit
+              ? '#fb923c'
+              : 'rgba(249, 115, 22, 0.45)'
             : isLit
             ? '#22d3ee'
             : 'rgba(6, 182, 212, 0.45)';
@@ -281,9 +395,9 @@ export default function App() {
                 style={[
                   styles.chevronBox,
                   {
-                    borderTopColor: color,
-                    borderRightColor: color,
-                    shadowColor: color,
+                    borderTopColor: baseColor,
+                    borderRightColor: baseColor,
+                    shadowColor: baseColor,
                     shadowOpacity: isLit ? 0.9 : 0.3,
                   },
                 ]}
@@ -295,7 +409,30 @@ export default function App() {
 
       {/* 3. TOP TACTICAL VISOR HUD */}
       <SafeAreaView style={styles.topHudWrapper}>
-        <View style={[styles.hudCard, mayday && styles.hudCardMayday]}>
+        <View
+          style={[
+            styles.hudCard,
+            role === 'firefighter' && styles.hudCardFirefighter,
+            mayday && styles.hudCardMayday,
+          ]}
+        >
+          {/* MODE SWITCHER: Task 1 (Occupant Escape) vs Task 2 (Firefighter Target Room) */}
+          <View style={styles.modeSwitchRow}>
+            <TouchableOpacity
+              style={[styles.modeBtn, role === 'occupant' && styles.modeBtnOccupantActive]}
+              onPress={() => switchMode('occupant')}
+            >
+              <Text style={styles.modeBtnText}>🏃 EVACUATE TO EXIT</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeBtn, role === 'firefighter' && styles.modeBtnFirefighterActive]}
+              onPress={() => switchMode('firefighter', targetRoomId)}
+            >
+              <Text style={styles.modeBtnText}>👨‍🚒 FIREFIGHTER MODE</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Connection & VPS Lock Header */}
           <View style={styles.hudHeaderRow}>
             <View style={styles.statusBadge}>
               <View
@@ -307,15 +444,23 @@ export default function App() {
               <Text style={styles.statusText}>
                 {connected
                   ? localized
-                    ? `VPS LOCKED (${inliers} PTS • ${Math.round(latencyMs)}ms)`
-                    : 'VPS SCANNING...'
+                    ? `3D LOCKED (${inliers} PTS • ${Math.round(latencyMs)}ms)`
+                    : 'SCANNING DCC...'
                   : 'SERVER OFFLINE'}
               </Text>
             </View>
 
-            <TouchableOpacity onPress={() => setShowUrlBar((s) => !s)} style={styles.cfgBtn}>
-              <Text style={styles.cfgBtnText}>{showUrlBar ? 'Hide IP' : 'Server IP'}</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              <TouchableOpacity
+                onPress={() => setUseStreamOverlay((v) => !v)}
+                style={styles.cfgBtn}
+              >
+                <Text style={styles.cfgBtnText}>{useStreamOverlay ? 'Cam: Live' : 'Cam: Raw'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowUrlBar((s) => !s)} style={styles.cfgBtn}>
+                <Text style={styles.cfgBtnText}>{showUrlBar ? 'Hide IP' : 'Server IP'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {showUrlBar && (
@@ -338,53 +483,98 @@ export default function App() {
             </View>
           )}
 
-          {/* Pinpointed Room / Hallway Location */}
-          <Text style={styles.locationLabel}>PINPOINTED LOCATION (DCC 200)</Text>
-          <Text style={styles.roomTitle}>{currentLabel.toUpperCase()}</Text>
-          <Text style={styles.coordsText}>
-            XYZ: ({position[0].toFixed(2)}m, {position[1].toFixed(2)}m, {position[2].toFixed(2)}m)
-          </Text>
-
-          {/* Active Dijkstra Egress Bar */}
-          <View style={styles.egressRow}>
-            <View>
-              <Text style={styles.egressTarget}>
-                {route.reachable
-                  ? `EXIT VIA: ${(route.target_exit || '').toUpperCase()}`
-                  : '⚠️ ALL ROUTES BLOCKED'}
-              </Text>
-              <Text style={styles.turnInstruction}>
-                {Math.abs(turnDeg) < 15
-                  ? '⬆ PROCEED STRAIGHT AHEAD'
-                  : turnDeg > 0
-                  ? `↗ VEER RIGHT (${Math.round(turnDeg)}°)`
-                  : `↖ VEER LEFT (${Math.round(Math.abs(turnDeg))}°)`}
+          {/* LIVE FIRE ALERT BANNER (Synced with Commander Webpage & Firefighter Reports) */}
+          {(alertBanner || (route?.fire_rooms && route.fire_rooms.length > 0)) && (
+            <View style={styles.fireBanner}>
+              <Text style={styles.fireBannerText} numberOfLines={1}>
+                {route?.fire_rooms && route.fire_rooms.length > 0
+                  ? `🔥 ACTIVE FIRE: ${route.fire_rooms.map((r) => r.label).join(', ')}`
+                  : alertBanner}
               </Text>
             </View>
-            <Text style={styles.distanceBadge}>
+          )}
+
+          {/* Pinpointed Room / Hallway Location in 3D DCC Model */}
+          <Text style={styles.locationLabel}>CURRENT LOCATION (DCC FLOOR 2)</Text>
+          <Text style={styles.roomTitle}>{currentLabel.toUpperCase()}</Text>
+
+          {/* TASK 2: FIREFIGHTER TARGET ROOM SELECTOR */}
+          {role === 'firefighter' && (
+            <View style={styles.targetSelectorWrap}>
+              <Text style={styles.targetSelectorLabel}>SELECT TARGET ROOM TO NAVIGATE:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomChipScroll}>
+                {QUICK_DCC_ROOMS.map((rm) => {
+                  const isSelected = targetRoomId === rm.id;
+                  const isOnFire = fireRoomIds.has(rm.id);
+                  return (
+                    <TouchableOpacity
+                      key={rm.id}
+                      onPress={() => switchMode('firefighter', rm.id)}
+                      style={[
+                        styles.roomChip,
+                        isSelected && styles.roomChipSelected,
+                        isOnFire && styles.roomChipFire,
+                      ]}
+                    >
+                      <Text style={styles.roomChipText}>
+                        {isOnFire ? `🔥 ${rm.short}` : rm.short}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Active 3D Route Bar (Closest Safe Exit for Occupants, Target Room for Firefighters) */}
+          <View style={styles.egressRow}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text
+                style={[
+                  styles.egressTarget,
+                  role === 'firefighter' && { color: '#fb923c' },
+                  !route.reachable && { color: '#ef4444' },
+                ]}
+              >
+                {!route.reachable
+                  ? `⚠️ ${route.reason || 'NO SAFE ROUTE'}`
+                  : role === 'firefighter'
+                  ? `🎯 TARGET ROOM: ${(route.target_exit || targetRoomId).toUpperCase()}`
+                  : `🚪 CLOSEST SAFE EXIT: ${(route.target_exit || 'EXIT').toUpperCase()}`}
+              </Text>
+              <Text style={styles.turnInstruction} numberOfLines={2}>
+                {primaryInstruction}
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.distanceBadge,
+                role === 'firefighter' && { backgroundColor: 'rgba(249, 115, 22, 0.25)' },
+              ]}
+            >
               {route.total_distance_m ? `${route.total_distance_m}m` : '—'}
             </Text>
           </View>
         </View>
       </SafeAreaView>
 
-      {/* 4. LIVE DCC 200 LEVEL MINI-MAP (Bottom Right, Pure RN Views) */}
+      {/* 4. LIVE DCC 200 LEVEL MINI-MAP (Shows Rooms, Active Fires in Red, and User Dot) */}
       <View style={styles.minimapCard}>
-        <Text style={styles.minimapTitle}>DCC 200 FLOOR MAP</Text>
+        <Text style={styles.minimapTitle}>DCC 3D MAP (LIVE FIRE SYNC)</Text>
         <View style={styles.minimapCanvas}>
-          {/* Corridor 219 bar */}
+          {/* Corridor 219 spine */}
           <View
             style={{
               position: 'absolute',
               left: mapX(-6),
               top: mapZ(-5) - 2,
-              width: mapX(44) - mapX(-6),
-              height: 5,
+              width: Math.max(20, mapX(38) - mapX(-6)),
+              height: 4,
               backgroundColor: '#334155',
-              borderRadius: 3,
+              borderRadius: 2,
             }}
           />
-          {/* Waypoint nodes */}
+          {/* DCC Floor 2 Room Dots */}
           {nodes.map((n) => (
             <View
               key={n.id}
@@ -392,14 +582,20 @@ export default function App() {
                 position: 'absolute',
                 left: mapX(n.pos[0]) - 3,
                 top: mapZ(n.pos[2]) - 3,
-                width: n.is_exit ? 7 : 5,
-                height: n.is_exit ? 7 : 5,
-                borderRadius: 4,
-                backgroundColor: n.blocked ? '#ef4444' : n.is_exit ? '#10b981' : '#64748b',
+                width: n.blocked ? 9 : n.is_exit ? 7 : 5,
+                height: n.blocked ? 9 : n.is_exit ? 7 : 5,
+                borderRadius: 5,
+                backgroundColor: n.blocked
+                  ? '#ef4444'
+                  : n.status === 'smoke'
+                  ? '#f59e0b'
+                  : n.is_exit
+                  ? '#10b981'
+                  : '#64748b',
               }}
             />
           ))}
-          {/* Live Firefighter Position Dot */}
+          {/* Live User Position Dot */}
           <View
             style={{
               position: 'absolute',
@@ -408,7 +604,7 @@ export default function App() {
               width: 10,
               height: 10,
               borderRadius: 5,
-              backgroundColor: '#f97316',
+              backgroundColor: role === 'firefighter' ? '#f97316' : '#22d3ee',
               borderWidth: 1.5,
               borderColor: '#ffffff',
             }}
@@ -416,18 +612,40 @@ export default function App() {
         </View>
       </View>
 
-      {/* 5. BOTTOM PUSH-TO-TALK MAYDAY BUTTON */}
+      {/* 5. BOTTOM ACTION BAR: Firefighter Live Fire Reporting OR Occupant Trapped/Mayday */}
       <View style={styles.bottomBar}>
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPressIn={() => sendMayday(true)}
-          onPressOut={() => sendMayday(false)}
-          style={[styles.maydayBtn, mayday && styles.maydayBtnActive]}
-        >
-          <Text style={styles.maydayText}>
-            {mayday ? '🚨 TRANSMITTING MAYDAY TO COMMAND...' : '🎙️ HOLD FOR MAYDAY (PTT)'}
-          </Text>
-        </TouchableOpacity>
+        {role === 'firefighter' ? (
+          <View style={styles.ffActionRow}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => sendFireReport('fire')}
+              style={styles.reportFireBtn}
+            >
+              <Text style={styles.reportBtnText}>🔥 REPORT FIRE HERE</Text>
+              <Text style={styles.reportBtnSub}>{currentLabel}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => sendFireReport('clear')}
+              style={styles.reportClearBtn}
+            >
+              <Text style={styles.reportBtnText}>✅ ROOM CLEAR</Text>
+              <Text style={styles.reportBtnSub}>Mark Searched</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPressIn={() => sendMayday(true)}
+            onPressOut={() => sendMayday(false)}
+            style={[styles.maydayBtn, mayday && styles.maydayBtnActive]}
+          >
+            <Text style={styles.maydayText}>
+              {mayday ? '🚨 SENDING TRAPPED ALERT TO COMMAND...' : '🆘 HOLD IF TRAPPED / NEED RESCUE'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -435,6 +653,11 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#050811' },
+  cameraFull: {
+    flex: 1,
+    width: SCREEN_W,
+    height: SCREEN_H,
+  },
   permissionContainer: {
     flex: 1,
     backgroundColor: '#070b14',
@@ -453,7 +676,7 @@ const styles = StyleSheet.create({
   permButtonText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   arFloorContainer: {
     position: 'absolute',
-    bottom: SCREEN_H * 0.19,
+    bottom: SCREEN_H * 0.21,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -473,40 +696,71 @@ const styles = StyleSheet.create({
   },
   topHudWrapper: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 34 : 0,
-    left: 12,
-    right: 12,
+    top: Platform.OS === 'android' ? 32 : 0,
+    left: 10,
+    right: 10,
   },
   hudCard: {
     backgroundColor: 'rgba(11, 15, 25, 0.86)',
     borderRadius: 16,
-    padding: 14,
+    padding: 12,
     borderWidth: 1.5,
-    borderColor: 'rgba(249, 115, 22, 0.55)',
+    borderColor: 'rgba(34, 211, 238, 0.55)',
+  },
+  hudCardFirefighter: {
+    borderColor: 'rgba(249, 115, 22, 0.75)',
   },
   hudCardMayday: {
     borderColor: '#ef4444',
-    backgroundColor: 'rgba(69, 10, 10, 0.90)',
+    backgroundColor: 'rgba(69, 10, 10, 0.92)',
+  },
+  modeSwitchRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  modeBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  modeBtnOccupantActive: {
+    backgroundColor: '#0891b2',
+    borderColor: '#22d3ee',
+  },
+  modeBtnFirefighterActive: {
+    backgroundColor: '#ea580c',
+    borderColor: '#fb923c',
+  },
+  modeBtnText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
   },
   hudHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   statusBadge: { flexDirection: 'row', alignItems: 'center' },
   statusDot: { width: 9, height: 9, borderRadius: 5, marginRight: 6 },
-  statusText: { color: '#e2e8f0', fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  statusText: { color: '#e2e8f0', fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
   cfgBtn: {
     backgroundColor: '#1e293b',
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 6,
     borderWidth: 1,
     borderColor: '#475569',
   },
-  cfgBtnText: { color: '#94a3b8', fontSize: 11, fontWeight: '700' },
-  urlRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  cfgBtnText: { color: '#94a3b8', fontSize: 10, fontWeight: '700' },
+  urlRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   urlInput: {
     flex: 1,
     backgroundColor: '#0f172a',
@@ -525,34 +779,85 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   connectBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  locationLabel: { color: '#94a3b8', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
-  roomTitle: { color: '#ffffff', fontSize: 22, fontWeight: '900', marginTop: 2 },
-  coordsText: { color: '#38bdf8', fontSize: 12, fontWeight: '700', marginTop: 2 },
+  fireBanner: {
+    backgroundColor: 'rgba(220, 38, 38, 0.9)',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#fca5a5',
+  },
+  fireBannerText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  locationLabel: { color: '#94a3b8', fontSize: 10, fontWeight: '800', letterSpacing: 0.7 },
+  roomTitle: { color: '#ffffff', fontSize: 21, fontWeight: '900', marginTop: 1 },
+  targetSelectorWrap: {
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(148, 163, 184, 0.2)',
+  },
+  targetSelectorLabel: {
+    color: '#fdba74',
+    fontSize: 10,
+    fontWeight: '800',
+    marginBottom: 5,
+  },
+  roomChipScroll: {
+    flexDirection: 'row',
+  },
+  roomChip: {
+    backgroundColor: '#1e293b',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  roomChipSelected: {
+    backgroundColor: '#ea580c',
+    borderColor: '#fed7aa',
+  },
+  roomChipFire: {
+    backgroundColor: '#991b1b',
+    borderColor: '#f87171',
+  },
+  roomChipText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   egressRow: {
-    marginTop: 10,
-    paddingTop: 10,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: 'rgba(148, 163, 184, 0.2)',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  egressTarget: { color: '#22d3ee', fontSize: 12, fontWeight: '800' },
-  turnInstruction: { color: '#f8fafc', fontSize: 15, fontWeight: '900', marginTop: 2 },
+  egressTarget: { color: '#22d3ee', fontSize: 12, fontWeight: '900' },
+  turnInstruction: { color: '#f8fafc', fontSize: 14, fontWeight: '800', marginTop: 2 },
   distanceBadge: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '900',
-    backgroundColor: 'rgba(34, 211, 238, 0.2)',
+    backgroundColor: 'rgba(34, 211, 238, 0.22)',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 8,
     overflow: 'hidden',
   },
   minimapCard: {
     position: 'absolute',
-    right: 14,
-    bottom: 104,
+    right: 12,
+    bottom: 102,
     backgroundColor: 'rgba(11, 15, 25, 0.88)',
     borderRadius: 12,
     padding: 8,
@@ -561,7 +866,7 @@ const styles = StyleSheet.create({
   },
   minimapTitle: {
     color: '#94a3b8',
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: 2,
@@ -573,13 +878,46 @@ const styles = StyleSheet.create({
   },
   bottomBar: {
     position: 'absolute',
-    bottom: 28,
-    left: 18,
-    right: 18,
+    bottom: 24,
+    left: 14,
+    right: 14,
+  },
+  ffActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reportFireBtn: {
+    flex: 1.2,
+    backgroundColor: '#dc2626',
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fca5a5',
+  },
+  reportClearBtn: {
+    flex: 1,
+    backgroundColor: '#15803d',
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#86efac',
+  },
+  reportBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  reportBtnSub: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 2,
   },
   maydayBtn: {
     backgroundColor: '#b91c1c',
-    paddingVertical: 17,
+    paddingVertical: 16,
     borderRadius: 16,
     alignItems: 'center',
     borderWidth: 2,
@@ -591,8 +929,8 @@ const styles = StyleSheet.create({
   },
   maydayText: {
     color: '#ffffff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
 });

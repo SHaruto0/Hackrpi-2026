@@ -41,8 +41,10 @@ def main():
         pid = struct.unpack_from("<q", pid_bytes, i * 8)[0]
         pts.append([round(x, 4), round(y, 4), round(z, 4), int(pid)])
 
-    # Find camera json files (prefer "2nd floor" recording)
-    cam_files = sorted(glob.glob("2nd floor/camera/frame_*.json"))
+    # Find camera json files (prefer "2nd floor part 2" recording)
+    cam_files = sorted(glob.glob("2nd floor part 2/camera/frame_*.json"))
+    if not cam_files:
+        cam_files = sorted(glob.glob("2nd floor/camera/frame_*.json"))
     if not cam_files:
         cam_files = sorted(glob.glob("camera/frame_*.json"))
     if not cam_files:
@@ -55,10 +57,35 @@ def main():
         R = d["extrinsics"]["R"]
         t = d["extrinsics"]["t"]
         look = [-R[0][2], -R[1][2], -R[2][2]]
+        if idx <= 365:
+            room_lbl = "232 CLASSROOM"
+        elif idx <= 440:
+            room_lbl = "219 CORRIDOR (OUTSIDE 232)"
+        elif idx <= 680:
+            room_lbl = "219 CORRIDOR (OUTSIDE 234)"
+        elif idx <= 930:
+            room_lbl = "219 CORRIDOR (OUTSIDE 235)"
+        elif idx <= 1138:
+            room_lbl = "235 CLASSROOM"
+        elif idx <= 1480:
+            room_lbl = "219 CORRIDOR (OUTSIDE 236)"
+        elif idx <= 1720:
+            room_lbl = "219 CORRIDOR (OUTSIDE 238)"
+        elif idx <= 1838:
+            room_lbl = "219 CORRIDOR (OUTSIDE 239)"
+        elif idx <= 2115:
+            room_lbl = "239 CLASSROOM"
+        elif idx <= 2280:
+            room_lbl = "219 CORRIDOR (OUTSIDE 240)"
+        elif idx <= 2385:
+            room_lbl = "219 CORRIDOR (EAST / STAIR 2ST6)"
+        else:
+            room_lbl = "242 EAST LOBBY / STAIR 2ST6 EXIT"
         cams.append(
             {
                 "id": idx,
                 "name": Path(jf).stem + ".jpg",
+                "room": room_lbl,
                 "pos": [round(float(v), 4) for v in t],
                 "look": [round(float(v), 4) for v in look],
             }
@@ -237,7 +264,7 @@ def main():
         activeSphere.position.copy(p);
         activeRayGeo.setFromPoints([p, p.clone().add(l.multiplyScalar(2.5))]);
         document.getElementById('simStatus').textContent =
-          `Localized ${{c.name}} -> XYZ: (${{c.pos[0].toFixed(2)}}, ${{c.pos[1].toFixed(2)}}, ${{c.pos[2].toFixed(2)}})m`;
+          `[${{c.room}}] ${{c.name}} -> XYZ: (${{c.pos[0].toFixed(2)}}, ${{c.pos[1].toFixed(2)}}, ${{c.pos[2].toFixed(2)}})m`;
         simIdx++;
       }}, 80);
     }};

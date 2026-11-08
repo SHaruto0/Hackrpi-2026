@@ -17,6 +17,7 @@ venv/
 # Raw MiSensorKit captures & archives (compiled 3D map is tracked in final_model/)
 dataset.zip
 2nd floor/
+2nd floor part 2/
 misensorkit_*/
 empty_model/
 outputs/

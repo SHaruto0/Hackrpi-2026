@@ -54,9 +54,13 @@ def rotmat_to_qvec(R: np.ndarray) -> np.ndarray:
 
 
 def find_dataset_root(base_dir: Path) -> Path:
-    """Locate the directory containing 'rgb' and 'camera' subfolders."""
+    """Locate the directory containing 'rgb' and 'camera' subfolders (preferring '2nd floor part 2')."""
     if (base_dir / "rgb").is_dir() and (base_dir / "camera").is_dir():
         return base_dir
+    for preferred in ("2nd floor part 2", "2nd floor"):
+        cand = base_dir / preferred
+        if cand.is_dir() and (cand / "rgb").is_dir() and (cand / "camera").is_dir():
+            return cand
     for sub in sorted(base_dir.iterdir()):
         if sub.is_dir() and (sub / "rgb").is_dir() and (sub / "camera").is_dir():
             return sub
@@ -100,6 +104,9 @@ def build_empty_model(dataset_dir: Path, output_dir: Path, stride: int = 1):
     ]
 
     valid_count = 0
+    if stride <= 0:
+        stride = max(1, len(json_files) // 300)
+        print(f"[build_poses] Auto-selected stride={stride} for {len(json_files)} total frames")
     selected_files = json_files[:: max(1, stride)]
 
     for idx, jf in enumerate(selected_files, start=1):
@@ -173,8 +180,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--stride",
         type=int,
-        default=1,
-        help="Frame stride (1 = use every frame, 2 = every 2nd frame, etc.)",
+        default=0,
+        help="Frame stride (0 = auto ~300 frames, 1 = every frame, 5 = every 5th frame)",
     )
     args = parser.parse_args()
     build_empty_model(args.dataset_dir, args.output_dir, args.stride)
