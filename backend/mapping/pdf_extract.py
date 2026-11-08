@@ -33,7 +33,8 @@ KAPPA = 0.5523               # bezier handle ratio of a quarter circle
 LEAF_TOL = 0.15              # m, how close a door leaf line must touch hinge/arc end
 MIN_WALL = 0.05              # m
 MIN_ROOM_M2 = 1.0
-ROOM_RE = re.compile(r"^(\d{3}[A-Z]?(?:\.\d+)?|\dST\d+|\d-E)$")
+EXIT_EDGE_M = 2.0               # exits must be within this distance of the floor outline
+ROOM_RE = re.compile(r"^(\d{3}[A-Z]?(?:\.\d+)?|\dST\d+[A-Z]?|\dS0\d|\d-E)$")
 # Not walkable: no floor here (open to below), dirt under raked seating, shafts. "OPEN TO ABOVE" is NOT a void:
 # it marks a double-height space whose floor is walkable (e.g. the front of a lecture hall on the lower level).
 VOID_TEXT = ("OPEN TO BELOW", "OTB", "UNEXCAVATED", "SHAFT", "AIR SHAFT")
@@ -705,6 +706,20 @@ def _grow_rooms(spaces, comp, block, area, taken, R):
     kernel = np.ones((15, 15), np.uint8)
     order = sorted((sp for sp in spaces if sp["comp"] is not None),
                    key=lambda sp: sp.get("m2") or 0)
+    # a strip next to several growing rooms (side-by-side halls) belongs to the room whose label is nearest
+    growers = [sp for sp in order if sp.get("pos") and area[sp["comp"]] < 0.6 * (sp.get("m2") or 0)]
+    gpos = np.array([R.px(sp["pos"]) for sp in growers], np.float32) if growers else None
+    owner_cache = {}
+    def owner(k):
+        if k not in owner_cache:
+            ys, xs = np.nonzero(comp == k)
+            big = [i for i, g_ in enumerate(growers) if (g_.get("m2") or 0) >= 1.5 * area[k]]   # closets can't own hall strips
+            if gpos is None or not len(xs) or not big:
+                owner_cache[k] = None
+            else:
+                d = (gpos[big, 0] - xs.mean()) ** 2 + (gpos[big, 1] - ys.mean()) ** 2
+                owner_cache[k] = growers[big[int(np.argmin(d))]]["id"]
+        return owner_cache[k]
     for sp in order:
         target = sp.get("m2") or (15.0 if sp["type"] == "stairwell" else 0)
         members = {sp["comp"]}
@@ -723,7 +738,7 @@ def _grow_rooms(spaces, comp, block, area, taken, R):
             mask = np.isin(comp, list(members)).astype(np.uint8)
             ring = cv2.dilate(mask, kernel) > 0
             cand = set(np.unique(comp[ring])) - members - taken - {0}
-            cand = {k for k in cand if area[k] <= cap and compact(k)}
+            cand = {k for k in cand if area[k] <= cap and compact(k) and owner(k) in (None, sp["id"])}
             if not cand:
                 break
             members |= cand
@@ -787,6 +802,8 @@ def build_floor(fl):
             continue
         if k == 0 or k in outside or k in void_comps:
             continue
+        if lab["m2"] and area[k] > 4 * lab["m2"] + 10 and typ not in ("hallway", "lobby"):
+            continue                             # callout label printed over a bigger room (e.g. 329.12 over hall 324)
         if k in comp_space:                      # second label in the same region
             comp_space[k]["also"].append(lab["num"])
             comp_space[k].setdefault("others", []).append(lab)
@@ -1045,6 +1062,13 @@ def align_and_link(floors):
 
     _stack_flights(floors, verticals)
 
+    for fl in floors:                       # exits live on the building edge, never inside
+        edges = list(zip(fl["outline"], fl["outline"][1:] + fl["outline"][:1]))
+        for d in fl["doors"]:
+            if d["exterior_exit"] and min(_pt_seg((d["x"], d["y"]), a, b) for a, b in edges) > EXIT_EDGE_M:
+                d["exterior_exit"] = False
+                d["connects"] = [c for c in d["connects"] if c != "OUTSIDE"]
+
     for fl in floors:                       # leftover unnamed regions add clutter; walkability comes from walls
         gone = {sp["id"] for sp in fl["spaces"] if sp["label"] == "unlabeled"}
         fl["spaces"] = [sp for sp in fl["spaces"] if sp["id"] not in gone]
@@ -1170,6 +1194,87 @@ def _set_z(f, lp, z0, z1):
         f["up"] = [-f["up"][0], -f["up"][1]]
 
 
+def drop_unreachable_exits(building):
+    """An exit people can't walk to from inside (an isolated pocket outside the building) is not an exit."""
+    from scipy.ndimage import label as cc
+    from ..core.grid import BuildingGrid
+    from ..core.model import load_building
+    g = BuildingGrid(load_building(json.loads(json.dumps(building))))
+    log = []
+    by_id = {}
+    for fi, r, c, did in g.exits:
+        by_id[did] = (fi, r, c)
+    for fl in building["floors"]:
+        fi = g.level_index[fl["level"]]
+        lab, _ = cc(g.walkable[fi])
+        named = set(np.unique(lab[(g.room[fi] >= 0) & g.walkable[fi]])) - {0}
+        for d in fl["doors"]:
+            if not d["exterior_exit"]:
+                continue
+            cell = by_id.get(d["id"])
+            if cell is None or lab[cell[1], cell[2]] not in named:
+                d["exterior_exit"] = False
+                d["connects"] = [c for c in d["connects"] if c != "OUTSIDE"]
+                log.append(f"dropped unreachable exit {d['id']}")
+    return log
+
+
+def refine_top_alignment(floors, verticals, pairs_ov):
+    """Shift-only alignment drifts far from its anchors (the floor 2 and 3 drawings differ slightly in scale and
+    rotation). Fit the top floor onto the floor below with a similarity transform (rotation + scale + shift) over every
+    shared stair/elevator plus hand-listed pairs (overrides "align_pairs": [["F2-2S01", "F3-3ST2"], ...]), and move all
+    of the top floor's geometry. Returns report lines."""
+    levels = sorted(fl["level"] for fl in floors)
+    if len(levels) < 2 or not pairs_ov:          # only when hand pairs are listed in the overrides file
+        return []
+    top, below = levels[-1], levels[-2]
+    F = {fl["level"]: fl for fl in floors}
+    cen = lambda poly: (sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly))
+    src, dst = [], []
+    for v in verticals:
+        P = v.get("positions", {})
+        if v["type"] != "ramp" and str(top) in P and str(below) in P:
+            src.append(P[str(top)]); dst.append(P[str(below)])
+    sp = {s_["id"]: s_ for fl in floors for s_ in fl["spaces"]}
+    for a_id, b_id in pairs_ov:
+        if a_id in sp and b_id in sp:
+            lo, hi = (a_id, b_id) if a_id.startswith(f"F{below}-") else (b_id, a_id)
+            for _ in range(3):                     # hand-listed pairs weigh 3x
+                src.append(cen(sp[hi]["polygon"])); dst.append(cen(sp[lo]["polygon"]))
+    if len(src) < 3:
+        return []
+    X, Y = np.array(src, float), np.array(dst, float)
+    mx, my = X.mean(0), Y.mean(0)
+    U, S, Vt = np.linalg.svd((Y - my).T @ (X - mx) / len(X))
+    D = np.diag([1.0, np.sign(np.linalg.det(U @ Vt))])
+    Rm = U @ D @ Vt
+    sc = float(np.trace(np.diag(S) @ D) / ((X - mx) ** 2).sum(1).mean())
+    t = my - sc * Rm @ mx
+    T = lambda p: [round(float(v), 2) for v in (sc * Rm @ np.asarray(p[:2], float) + t)]
+    Rv = lambda v: [round(float(c), 3) for c in (Rm @ np.asarray(v, float))]
+    before = np.sqrt(((X - Y) ** 2).sum(1)).mean(); after = np.sqrt(((np.array([T(p) for p in X]) - Y) ** 2).sum(1)).mean()
+    if after >= before and not pairs_ov:
+        return [f"floor {top}: similarity fit not better ({before:.1f} -> {after:.1f} m), kept"]
+    fl = F[top]
+    fl["outline"] = [T(p) for p in fl["outline"]]
+    for w in fl["walls"]:
+        w["x1"], w["y1"] = T((w["x1"], w["y1"])); w["x2"], w["y2"] = T((w["x2"], w["y2"]))
+    for s_ in fl["spaces"]:
+        s_["polygon"] = [T(p) for p in s_["polygon"]]
+    for d in fl["doors"]:
+        d["x"], d["y"] = T((d["x"], d["y"]))
+        if d.get("axis"):
+            d["axis"] = Rv(d["axis"])
+    for f in fl.get("stair_flights", []):
+        f["center"] = T(f["center"]); f["poly"] = [T(p) for p in f["poly"]]; f["up"] = Rv(f["up"])
+    for v in verticals:
+        if str(top) in v.get("positions", {}):
+            v["positions"][str(top)] = T(v["positions"][str(top)])
+    ang = math.degrees(math.atan2(Rm[1, 0], Rm[0, 0]))
+    return [f"floor {top}: similarity fit on {len(X)} pairs, scale {sc:.3f}, rot {ang:.2f} deg, "
+            f"mean anchor error {before:.1f} -> {after:.1f} m"]
+
+
 def apply_overrides(building, path):
     """Hand fixes that survive re-extraction, keyed by position (final map meters), e.g. data/buildings/dcc.overrides.json:
       {"no_exit":  [{"level": 3, "near": [10.5, 60.5], "radius": 4, "note": "..."}],
@@ -1215,12 +1320,59 @@ def apply_overrides(building, path):
         fl["doors"].append({"id": did, "x": x, "y": y, "width": rule.get("width", 1.0), "connects": ["OUTSIDE"],
                             "exterior_exit": True, "confidence": 1.0})
         log.append(f"added exit {did} at ({x}, {y})")
+    for rule in ov.get("clear_walls", []):             # open up an area: drop wall lines whose midpoint is in the box
+        fl = floors.get(rule.get("level"))
+        if fl:
+            x0, y0, x1, y1 = rule["box"]
+            keep = [w for w in fl["walls"] if not (x0 <= (w["x1"] + w["x2"]) / 2 <= x1 and y0 <= (w["y1"] + w["y2"]) / 2 <= y1)]
+            log.append(f"cleared {len(fl['walls']) - len(keep)} wall lines on floor {fl['level']}")
+            fl["walls"] = keep
+    for rule in ov.get("link_stairs", []):             # explicit stair pairing by space id per floor
+        pos, fls = {}, []
+        for lv_s, sid in rule["spaces"].items():
+            fl = floors.get(int(lv_s))
+            sp = next((x for x in fl["spaces"] if x["id"] == sid), None) if fl else None
+            if sp:
+                sp["type"] = "stairwell"; sp["multi_floor"] = True
+                c = (sum(p[0] for p in sp["polygon"]) / len(sp["polygon"]), sum(p[1] for p in sp["polygon"]) / len(sp["polygon"]))
+                pos[lv_s] = [round(c[0], 2), round(c[1], 2)]; fls.append(int(lv_s))
+        building["vertical_connections"] = [v for v in building["vertical_connections"] if v["id"] != rule["id"]]
+        if len(fls) >= 2 and rule.get("straight", True):     # one shaft: same x, y on every floor
+            if rule.get("anchor") and str(rule["anchor"]) in pos:     # drop straight down from that floor's stair
+                mx, my = pos[str(rule["anchor"])]
+            else:
+                mx = round(sum(p[0] for p in pos.values()) / len(pos), 2)
+                my = round(sum(p[1] for p in pos.values()) / len(pos), 2)
+            pos = {k: [mx, my] for k in pos}
+        if len(fls) >= 2:
+            building["vertical_connections"].append({
+                "id": rule["id"], "name": rule.get("name", rule["id"]), "type": "stairs", "floors": sorted(fls),
+                "x": sum(p[0] for p in pos.values()) / len(pos), "y": sum(p[1] for p in pos.values()) / len(pos),
+                "positions": pos, "confidence": 1.0})
+            log.append(f"{rule['id']} links {rule['spaces']}")
+    for rule in ov.get("add_link", []):                # a stair the labels don't pair up: explicit floors + point
+        building["vertical_connections"] = [v for v in building["vertical_connections"] if v["id"] != rule["id"]]
+        xy = [round(rule["xy"][0], 2), round(rule["xy"][1], 2)]
+        building["vertical_connections"].append({
+            "id": rule["id"], "name": rule.get("name", rule["id"]), "type": rule.get("type", "stairs"),
+            "floors": sorted(rule["floors"]), "x": xy[0], "y": xy[1],
+            "positions": {str(lv): xy for lv in rule["floors"]}, "confidence": 1.0})
+        log.append(f"added link {rule['id']} floors {rule['floors']} at {xy}")
     for rule in ov.get("vertical_floors", []):          # e.g. a stair that does not reach every floor
         for v in building["vertical_connections"]:
             if v["id"] == rule["id"]:
                 v["floors"] = sorted(rule["floors"])
                 v["positions"] = {k: p for k, p in v.get("positions", {}).items() if int(k) in v["floors"]}
                 log.append(f"{v['id']} floors -> {v['floors']}")
+    for rule in ov.get("move_flight", []):             # nudge one flight's drawing (dx, dy meters)
+        fl = floors.get(rule.get("level"))
+        if fl:
+            for f in fl.get("stair_flights", []):
+                if math.dist(rule["near"], f["center"]) <= rule.get("radius", 1.5):
+                    dx, dy = rule.get("dx", 0.0), rule.get("dy", 0.0)
+                    f["center"] = [round(f["center"][0] + dx, 2), round(f["center"][1] + dy, 2)]
+                    f["poly"] = [[round(p[0] + dx, 2), round(p[1] + dy, 2)] for p in f["poly"]]
+                    log.append(f"moved flight on floor {fl['level']} by ({dx}, {dy})")
     for rule in ov.get("remove_flight", []):
         fl = floors.get(rule.get("level"))
         if fl:
@@ -1263,6 +1415,12 @@ def main():
             debug_png(raw, fl, raster, os.path.join(args.debug, f"floor{lv}.png"))
 
     verticals, report = align_and_link(floors)
+    ov_file = os.path.splitext(args.out)[0] + ".overrides.json"
+    pairs_ov = []
+    if os.path.isfile(ov_file):
+        with open(ov_file, encoding="utf-8") as fh:
+            pairs_ov = json.load(fh).get("align_pairs", [])
+
     for r in report:
         print("Align", r)
     out = {"building": args.building, "units": "meters",
@@ -1273,6 +1431,61 @@ def main():
     if os.path.isfile(ov_path):
         for line in apply_overrides(out, ov_path):
             print("Override:", line)
+    for line in refine_top_alignment(out["floors"], out["vertical_connections"], pairs_ov):
+        print("Align", line)
+    if os.path.isfile(ov_path):                      # re-straighten hand-linked stairs after the fit
+        with open(ov_path, encoding="utf-8") as fh:
+            for rule in json.load(fh).get("link_stairs", []):
+                for v in out["vertical_connections"]:
+                    if v["id"] == rule["id"] and rule.get("straight", True) and v.get("positions"):
+                        P = [v["positions"][str(rule["anchor"])]] if rule.get("anchor") and str(rule["anchor"]) in v["positions"] else list(v["positions"].values())
+                        m_ = [round(sum(p[0] for p in P) / len(P), 2), round(sum(p[1] for p in P) / len(P), 2)]
+                        v["positions"] = {k: m_ for k in v["positions"]}
+                        v["x"], v["y"] = m_
+    if os.path.isfile(ov_path):                      # final manual nudge of a whole floor (overrides "shift_floor")
+        with open(ov_path, encoding="utf-8") as fh:
+            for rule in json.load(fh).get("shift_floor", []):
+                fl = next((f for f in out["floors"] if f["level"] == rule["level"]), None)
+                if not fl:
+                    continue
+                dx, dy = rule.get("dx", 0.0), rule.get("dy", 0.0)
+                mv_ = lambda p: [round(p[0] + dx, 2), round(p[1] + dy, 2)]
+                fl["outline"] = [mv_(p) for p in fl["outline"]]
+                for w in fl["walls"]:
+                    w["x1"], w["y1"] = mv_((w["x1"], w["y1"])); w["x2"], w["y2"] = mv_((w["x2"], w["y2"]))
+                for s_ in fl["spaces"]:
+                    s_["polygon"] = [mv_(p) for p in s_["polygon"]]
+                for d in fl["doors"]:
+                    d["x"], d["y"] = mv_((d["x"], d["y"]))
+                for f in fl.get("stair_flights", []):
+                    f["center"] = mv_(f["center"]); f["poly"] = [mv_(p) for p in f["poly"]]
+                for v in out["vertical_connections"]:
+                    if str(rule["level"]) in v.get("positions", {}):
+                        v["positions"][str(rule["level"])] = mv_(v["positions"][str(rule["level"])])
+                print(f"Override: shifted floor {rule['level']} by ({dx}, {dy})")
+    if os.path.isfile(ov_path):                      # re-straighten hand-linked stairs after the fit and floor shifts
+        with open(ov_path, encoding="utf-8") as fh:
+            for rule in json.load(fh).get("link_stairs", []):
+                for v in out["vertical_connections"]:
+                    if v["id"] == rule["id"] and rule.get("straight", True) and not rule.get("keep_shift") and v.get("positions"):
+                        P = [v["positions"][str(rule["anchor"])]] if rule.get("anchor") and str(rule["anchor"]) in v["positions"] else list(v["positions"].values())
+                        m_ = [round(sum(p[0] for p in P) / len(P), 2), round(sum(p[1] for p in P) / len(P), 2)]
+                        v["positions"] = {k: m_ for k in v["positions"]}
+                        v["x"], v["y"] = m_
+    if os.path.isfile(ov_path):                      # pin one stair end on one floor (overrides "vertical_position")
+        with open(ov_path, encoding="utf-8") as fh:
+            for rule in json.load(fh).get("vertical_position", []):
+                for v in out["vertical_connections"]:
+                    if v["id"] == rule["id"] and str(rule["level"]) in v.get("positions", {}):
+                        v["positions"][str(rule["level"])] = list(rule["xy"])
+                        print(f"Override: {v['id']} floor {rule['level']} at {rule['xy']}")
+    if os.path.isfile(ov_path):                      # display-only tweaks for the 3D view (overrides "view_tweaks")
+        with open(ov_path, encoding="utf-8") as fh:
+            vt = json.load(fh).get("view_tweaks")
+        if vt:
+            out["view_tweaks"] = vt
+    for line in drop_unreachable_exits(out):
+        print("Exit check:", line)
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=1)
     print(f"Saved {args.out}. Stairs/elevators linked: {[v['id'] for v in verticals]}")

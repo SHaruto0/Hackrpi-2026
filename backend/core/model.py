@@ -250,6 +250,7 @@ def load_building(raw):
         "floors": floors,
         "vertical_connections": verticals,
         "multi_floor_spaces": raw.get("multi_floor_spaces") or [],
+        "view_tweaks": raw.get("view_tweaks") if isinstance(raw.get("view_tweaks"), dict) else {},
         "global_notes": str(raw.get("global_notes") or ""),
         "warnings": warnings,
     }

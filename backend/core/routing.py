@@ -120,7 +120,7 @@ class RouteField:
             if a[0] == b[0]:
                 total += g.cell * math.hypot(a[1] - b[1], a[2] - b[2])
             else:                       # stairs count as their walking-equivalent cost
-                total += link_cost.get((tuple(a), tuple(b)), 10.0)
+                total += link_cost.get((tuple(a), tuple(b)), 5.0)
         return total
 
     def _simplify(self, cells):

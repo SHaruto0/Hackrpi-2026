@@ -29,6 +29,25 @@
     flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px;
     padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
   }
+  .finder { position: relative; flex: 1 1 280px; max-width: 460px; min-width: 160px; }
+  #roomFind { width: 100%; }
+  #findBox {
+    position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
+    max-height: 340px; overflow: auto; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  }
+  #findBox[hidden] { display: none !important; }
+  .find-hit { padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .find-hit:hover, .find-hit.on { background: #21262d; }
+  .find-meta { color: var(--muted); font-size: 12px; }
+  .find-act { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .find-empty { margin: 0; padding: 8px 10px; }
+  .mode { display: flex; align-items: center; }
+  .mode button { border-radius: 0; }
+  .mode button:first-child { border-radius: 6px 0 0 6px; }
+  .mode button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+  #modeLabel { min-width: 4.5em; }
   h1 { font-size: 16px; margin: 0; }
   h2 { font-size: 13px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
   .sub, .k, .model { color: var(--muted); }
@@ -172,7 +191,16 @@
     <h1>Firesight Commander</h1>
     <div class="sub" id="bname">Loading building...</div>
   </div>
+  <div class="finder">
+    <input id="roomFind" type="search" placeholder="Find a room by number or name" autocomplete="off" spellcheck="false" aria-label="Find a room">
+    <div id="findBox" hidden></div>
+  </div>
   <div class="links">
+    <div class="mode" role="group" aria-label="Fire mode">
+      <button id="modeSim" type="button" aria-pressed="true">Simulate</button>
+      <button id="modeRep" type="button" aria-pressed="false">Reports only</button>
+    </div>
+    <span id="modeLabel" class="k">simulate</span>
     <span class="k">Sim step <b id="tval">0</b></span>
     <span id="fireBadge" class="badge off">No fire</span>
     <a href="/">3D view</a>
@@ -281,6 +309,10 @@
   let people = [];
   let roomById = {};
   let selectedId = "";
+  let pulseId = "";
+  let pulseT = 0;
+  let pulseOn = false;
+  let findPick = "";
   let fireRunning = false;
   let briefBusy = false;
   let briefQueued = false;
@@ -888,7 +920,13 @@
         ctx.lineWidth = 2;
         ctx.stroke();
       }
-      if (rst === "fire" || rst === "smoke" || s.id === selectedId) labeled.push(s);
+      if (s.id === pulseId) {
+        const wave = 0.5 + 0.5 * Math.sin((pulseT || 0) / 160);
+        ctx.strokeStyle = "rgba(88,166,255," + (0.35 + 0.65 * wave).toFixed(3) + ")";
+        ctx.lineWidth = 3 + wave * 2;
+        ctx.stroke();
+      }
+      if (rst === "fire" || rst === "smoke" || s.id === selectedId || s.id === pulseId) labeled.push(s);
     }
     ctx.beginPath();
     ctx.strokeStyle = "rgba(201,209,217,0.92)";
@@ -991,6 +1029,12 @@
     const badge = $("fireBadge");
     badge.textContent = fireRunning ? "Fire running" : "No fire";
     badge.className = fireRunning ? "badge hot" : "badge off";
+    const mode = state.mode === "reports" ? "reports" : "simulate";
+    $("modeSim").classList.toggle("on", mode === "simulate");
+    $("modeRep").classList.toggle("on", mode === "reports");
+    $("modeSim").setAttribute("aria-pressed", mode === "simulate" ? "true" : "false");
+    $("modeRep").setAttribute("aria-pressed", mode === "reports" ? "true" : "false");
+    $("modeLabel").textContent = mode;
   }
 
   async function pollLiveOnce() {
@@ -1016,6 +1060,7 @@
       }
     }
     if (dirty) drawFloors();
+    renderFind();
   }
 
   function pollLive() {
@@ -1494,6 +1539,7 @@
     renderReports();
     renderSearch();
     renderVictimAlert();
+    renderFind();
     if (building) drawFloors();
   }
 
@@ -1534,6 +1580,170 @@
       btn.disabled = false;
     }
   });
+
+  function namedRooms() {
+    const out = [];
+    for (const s of Object.values(roomById)) {
+      const type = String(s.type || "").toLowerCase();
+      if (type === "unknown" || type === "void" || type === "unlabeled") continue;
+      const label = String(s.label || "").trim();
+      if (!label) continue;
+      out.push(s);
+    }
+    out.sort((a, b) => {
+      const dl = num(a.level) - num(b.level);
+      if (dl) return dl;
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true });
+    });
+    return out;
+  }
+
+  function roomNum(s) {
+    const label = String((s && (s.label || s.id)) || "");
+    const m = label.match(/\d+/);
+    return m ? m[0] : label;
+  }
+
+  function roomStatus(id) {
+    const st = (state.rooms || {})[id];
+    return st === "fire" || st === "smoke" ? st : "clear";
+  }
+
+  function peopleIn(id) {
+    return people.filter((p) => p && String(p.room_id) === String(id));
+  }
+
+  function matchRoom(s, q) {
+    const query = q.trim().toLowerCase();
+    if (!query) return false;
+    const label = String(s.label || "").toLowerCase();
+    const id = String(s.id || "").toLowerCase();
+    if (label.includes(query) || id.includes(query)) return true;
+    const digits = query.replace(/\D/g, "");
+    if (!digits) return false;
+    return label.includes(digits) || id.includes(digits) || roomNum(s) === digits;
+  }
+
+  function startPulse() {
+    if (pulseOn) return;
+    pulseOn = true;
+    const tick = (ts) => {
+      if (!pulseId) { pulseOn = false; return; }
+      pulseT = ts;
+      drawFloors();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function pickFound(s) {
+    findPick = s.id;
+    pulseId = s.id;
+    selectedId = s.id;
+    const sel = $("roomSel");
+    if ([...sel.options].some((o) => o.value === s.id)) sel.value = s.id;
+    const card = document.querySelector('.floor[data-level="' + s.level + '"]');
+    if (card) card.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    startPulse();
+    renderFind();
+    drawFloors();
+  }
+
+  function findBtn(label, fn) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      fn();
+    });
+    return b;
+  }
+
+  async function reportFound(s, text) {
+    try {
+      const { res, data } = await postJSON("/api/reports", { text: text, by: "Command" });
+      if (!res.ok) { setCtrl(detailOf(data, "Could not send the report."), true); return; }
+      const conf = data && data.confirmation;
+      setCtrl(typeof conf === "string" && conf ? conf : "Report sent.");
+      await pollReports();
+    } catch {
+      setCtrl("Reports unavailable", true);
+    }
+  }
+
+  async function simFound(s) {
+    try {
+      const { res, data } = await postJSON("/api/fire/start", { room_id: s.id });
+      if (!res.ok) { setCtrl(detailOf(data, "Could not start the fire."), true); return; }
+      setCtrl("Fire started in " + (s.label || s.id) + ".");
+      await pollLive();
+      await loadBrief();
+    } catch {
+      setCtrl("Could not start the fire.", true);
+    }
+  }
+
+  function renderFind() {
+    const box = $("findBox");
+    const input = $("roomFind");
+    if (!box || !input) return;
+    const q = input.value;
+    box.replaceChildren();
+    if (!q.trim() || !building) { box.hidden = true; return; }
+    const hits = namedRooms().filter((s) => matchRoom(s, q)).slice(0, 20);
+    box.hidden = false;
+    if (!hits.length) {
+      const empty = document.createElement("p");
+      empty.className = "k find-empty";
+      empty.textContent = "No rooms match.";
+      box.appendChild(empty);
+      return;
+    }
+    for (const s of hits) {
+      const row = document.createElement("div");
+      row.className = "find-hit" + (s.id === findPick ? " on" : "");
+      const title = document.createElement("div");
+      title.textContent = s.label;
+      const meta = document.createElement("div");
+      meta.className = "find-meta";
+      const who = peopleIn(s.id);
+      const names = who.map((p) => p.person_id || "person").join(", ");
+      const searched = searchedIds.has(String(s.id)) ? "searched" : "not searched";
+      meta.textContent = "Floor " + s.level + " · " + roomStatus(s.id) + " · " + searched + " · " +
+        (who.length ? who.length + " " + (who.length === 1 ? "person" : "people") + " (" + names + ")" : "no people");
+      row.append(title, meta);
+      row.addEventListener("click", () => pickFound(s));
+      box.appendChild(row);
+      if (s.id !== findPick) continue;
+      const act = document.createElement("div");
+      act.className = "find-act";
+      const num = roomNum(s);
+      act.append(
+        findBtn("Mark searched", () => reportFound(s, "Room " + num + " searched")),
+        findBtn("Report fire", () => reportFound(s, "Fire in room " + num)),
+        findBtn("Start sim fire", () => simFound(s)),
+      );
+      box.appendChild(act);
+    }
+  }
+
+  async function setFireMode(mode) {
+    try {
+      const { res, data } = await postJSON("/api/fire/mode", { mode: mode });
+      if (!res.ok) { setCtrl(detailOf(data, "Could not set the mode."), true); return; }
+      state.mode = data.mode || mode;
+      applyChrome();
+      await pollLive();
+    } catch {
+      setCtrl("Could not set the mode.", true);
+    }
+  }
+
+  $("roomFind").addEventListener("input", renderFind);
+  $("roomFind").addEventListener("focus", renderFind);
+  $("modeSim").addEventListener("click", () => setFireMode("simulate"));
+  $("modeRep").addEventListener("click", () => setFireMode("reports"));
 
   new ResizeObserver(() => drawFloors()).observe($("floors"));
 

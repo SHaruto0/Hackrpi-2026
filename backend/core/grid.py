@@ -10,8 +10,8 @@ import numpy as np
 CELL = 0.5            # meters per cell
 WALL_HALF = 0.3       # wall half-thickness for rasterizing (m)
 DOOR_PAD = 0.25       # extra clearance around a door opening (m)
-STAIR_COST_M = 10.0   # walking-meters equivalent per floor of stairs (~20 steps, slower than walking)
-RAMP_COST_M = 7.0     # per floor for ramps / tiered hall aisles
+STAIR_COST_M = 5.0    # walking-meters equivalent per floor of stairs (~20 steps, slower than walking)
+RAMP_COST_M = 4.0     # per floor for ramps / tiered hall aisles
 
 
 def point_in_poly(X, Y, poly):

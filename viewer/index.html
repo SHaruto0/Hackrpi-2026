@@ -21,6 +21,7 @@
   button { cursor:pointer; } button:hover { border-color:#8b949e; }
   button.primary { background:#da3633; border-color:#da3633; }
   button.on { background:#1f6feb; border-color:#1f6feb; }
+  #btnIgnite.on { background:var(--fire); border-color:var(--fire); color:#fff; }
   select { flex:1; min-width:0; }
   .sec { border-top:1px solid var(--line); margin-top:10px; padding-top:8px; }
   .k { color:var(--muted); } .bad { color:var(--fire); } .good { color:var(--safe); }
@@ -50,10 +51,17 @@
   <div class="row"><label>Fire in</label><select id="roomSel"></select></div>
   <div class="row">
     <button class="primary" id="btnFire">Add fire</button>
-    <button id="btnIgnite">Ignite</button>
     <button id="btnStep">Step</button>
     <button id="btnPlay">Play</button>
     <button id="btnReset">Reset</button>
+  </div>
+  <div class="row">
+    <button id="btnIgnite">Click to start fire</button>
+  </div>
+  <div class="row">
+    <label>Mode</label>
+    <button id="modeSim" class="on">Simulate</button>
+    <button id="modeRep">Reports only</button>
   </div>
   <div class="row"><label for="speed">Speed</label>
     <select id="speed">
@@ -81,7 +89,7 @@
   </div>
 
   <div class="sec">
-    <div class="k">Click a walkable spot for the escape route. It reroutes live as the fire spreads. Ignite places a fire where you click.</div>
+    <div class="k">Click a walkable spot for the escape route. It reroutes live as the fire spreads. Click to start fire places a fire where you click.</div>
     <div id="routeInfo" style="margin-top:6px"></div>
   </div>
   <div class="sec" id="warnSec" style="display:none"><div class="k">Map warnings</div><div id="warn"></div></div>
@@ -176,7 +184,7 @@ const HALL_TIERS = 6;
 const HALL_RING = 36;
 
 let lastStart = null, cachedRoute = null, cachedAll = null;
-let playing = false, playToken = 0, playTick = 0, showAll = false, ignite = false;
+let playing = false, playToken = 0, playTick = 0, showAll = false, ignite = false, fireMode = "simulate";
 let lastState = null, labelsFar = false, labelDomDirty = true;
 let chain = Promise.resolve();
 let toastTimer = null;
@@ -741,6 +749,12 @@ function rectFromPoints(pts) {
   minX -= pad; maxX += pad; minZ -= pad; maxZ += pad;
   return { cx: (minX + maxX) / 2, cz: (minZ + maxZ) / 2, hx: (maxX - minX) / 2, hz: (maxZ - minZ) / 2, rot: 0 };
 }
+function tweakHalfRect(id, rect) {
+  const t = (((building || {}).view_tweaks || {}).landings || {})[id];
+  if (!t) return rect;
+  const dx = +t.dx || 0, dy = +t.dy || 0, grow = +t.grow || 0;
+  return { cx: rect.cx + dx, cz: rect.cz + dy, hx: rect.hx + grow, hz: rect.hz + grow, rot: rect.rot || 0 };
+}
 function pairForHalfY(y) {
   let best = null, bestD = Infinity;
   for (let i = 0; i < levels.length - 1; i++) {
@@ -775,7 +789,7 @@ function addHalfLandings(link) {
     if (!bucket.pts.length) continue;
     const span = pairForHalfY(bucket.y);
     if (!span) continue;
-    addLanding(link, rectFromPoints(bucket.pts), bucket.y, span.lo, span.hi);
+    addLanding(link, tweakHalfRect(link.id, rectFromPoints(bucket.pts)), bucket.y, span.lo, span.hi);
   }
 }
 function zFlightHitsLevel(link, level, yLand) {
@@ -812,7 +826,67 @@ function addGeneratedSteps(link, steps) {
   verticalGroup.add(mesh);
   stairMats.push({ id: link.id, material: mat });
 }
+const SPIRAL_N = 24, SPIRAL_R = 1.3;
+function wedgeGeo(rOut, rIn, theta, thick) {
+  const shape = new THREE.Shape();
+  shape.moveTo(rOut, 0);
+  shape.absarc(0, 0, rOut, 0, theta, false);
+  shape.lineTo(Math.cos(theta) * rIn, Math.sin(theta) * rIn);
+  shape.absarc(0, 0, rIn, theta, 0, true);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, -thick / 2, 0);
+  return geo;
+}
+function addSpiralStairs(link) {
+  const lvs = linkLevels(link);
+  const mat = new THREE.MeshStandardMaterial({ color: stairColor(stairStatus(link.id)), roughness: 0.72 });
+  stairMats.push({ id: link.id, material: mat });
+  const rIn = 0.16;
+  const dTheta = (Math.PI * 2) / SPIRAL_N;
+  for (let i = 0; i < lvs.length - 1; i++) {
+    const lo = lvs[i], hi = lvs[i + 1];
+    const pLo = (link.points || {})[String(lo)];
+    const pHi = (link.points || {})[String(hi)];
+    if (!pLo || !pHi) continue;
+    const cx = pLo[0], cz = pLo[1];
+    const y0 = levelY(lo), y1 = levelY(hi);
+    const riser = (y1 - y0) / SPIRAL_N;
+    const h = Math.max(0.05, Math.abs(riser) * 0.92);
+    const geo = wedgeGeo(SPIRAL_R, rIn, dTheta * 0.9, h);
+    const mesh = new THREE.InstancedMesh(geo, mat, SPIRAL_N);
+    mesh.frustumCulled = false;
+    mesh.raycast = function () {};
+    const dummy = new THREE.Object3D();
+    for (let k = 0; k < SPIRAL_N; k++) {
+      dummy.position.set(cx, y0 + (k + 0.5) * riser, cz);
+      dummy.rotation.set(0, -k * dTheta, 0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(k, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    verticalGroup.add(mesh);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, Math.max(0.2, Math.abs(y1 - y0)), 10), mat);
+    pole.position.set(cx, (y0 + y1) / 2, cz);
+    pole.frustumCulled = false;
+    pole.raycast = function () {};
+    verticalGroup.add(pole);
+  }
+  if (lvs.length) {
+    const top = lvs[lvs.length - 1];
+    const p = (link.points || {})[String(top)];
+    if (p) {
+      const name = link.name || "Stairs";
+      verticalGroup.add(makeLabel(name, name, p[0], levelY(top) + WALL_H + 0.5, p[1]));
+    }
+  }
+}
 function addStairs(link) {
+  if (link.id === "STAIR-2" || link.name === "Spiral stair") {
+    addSpiralStairs(link);
+    return;
+  }
   const lvs = linkLevels(link);
   addHalfLandings(link);
   const generated = [];
@@ -934,6 +1008,7 @@ function collectFlightSteps(flights, level) {
   const half = Math.max(gap, 0.5) / 2;
   const out = [];
   for (const f of flights || []) {
+    if (stairVertId(f.stair) === "STAIR-2") continue;
     const fr = flightFrame(f);
     if (!fr) continue;
     const n = Math.max(1, Math.min(60, Math.round(Number(f.steps) || 1)));
@@ -1246,8 +1321,18 @@ function renderOrigins(list) {
     el.appendChild(d);
   }
 }
+function playLabel() {
+  return fireMode === "reports" ? "Play (reports only)" : "Play";
+}
+function syncModeUi() {
+  $("modeSim").classList.toggle("on", fireMode !== "reports");
+  $("modeRep").classList.toggle("on", fireMode === "reports");
+  if (!playing) $("btnPlay").textContent = playLabel();
+}
 function applyState(state) {
   lastState = state;
+  if (state && (state.mode === "simulate" || state.mode === "reports")) fireMode = state.mode;
+  syncModeUi();
   $("tval").textContent = `t = ${state.t}`;
   renderOrigins(state.origins);
   for (const [id, mesh] of roomMeshes) {
@@ -1314,7 +1399,18 @@ function climbPoints(lvA, xA, zA, lvB, xB, zB) {
   const y0 = levelY(loLv), y1 = levelY(hiLv);
   let pts;
   if (best.kind === "ramp") pts = rampClimb(best.pLo, best.pHi, y0, y1);
-  else {
+  else if (best.id === "STAIR-2") {
+    const cx = best.pLo[0], cz = best.pLo[1];
+    const rad = (SPIRAL_R + 0.16) / 2;
+    const dTheta = (Math.PI * 2) / SPIRAL_N;
+    const riser = (y1 - y0) / SPIRAL_N;
+    pts = [new THREE.Vector3(cx, y0 + 0.35, cz)];
+    for (let k = 0; k < SPIRAL_N; k++) {
+      const ang = k * dTheta + dTheta * 0.45;
+      pts.push(new THREE.Vector3(cx + Math.cos(ang) * rad, y0 + (k + 0.5) * riser + 0.12, cz + Math.sin(ang) * rad));
+    }
+    pts.push(new THREE.Vector3(best.pHi[0], y1 + 0.35, best.pHi[1]));
+  } else {
     const land = stairLandings.find((L) => L.id === best.id && L.lo === loLv && L.hi === hiLv);
     if (land) {
       pts = [
@@ -1436,6 +1532,7 @@ renderer.domElement.addEventListener("pointerup", (e) => {
 
 async function placeFire(level, x, y) {
   await post("/api/fire/start", { level, x, y });
+  showToast("Fire started");
   applyState(await api("/api/state"));
   await refreshSelected();
   if (showAll) await refreshAll();
@@ -1449,7 +1546,7 @@ async function afterFireChange() {
 function stopPlay() {
   playing = false;
   playToken++;
-  $("btnPlay").textContent = "Play";
+  $("btnPlay").textContent = playLabel();
   $("btnPlay").classList.remove("on");
 }
 async function playLoop(token) {
@@ -1487,6 +1584,14 @@ $("btnIgnite").onclick = () => {
   $("btnIgnite").classList.toggle("on", ignite);
   renderer.domElement.style.cursor = ignite ? "crosshair" : "";
 };
+function setFireMode(mode) {
+  enqueue(async () => {
+    await post("/api/fire/mode", { mode });
+    applyState(await api("/api/state"));
+  }).catch((e) => showToast(e.message));
+}
+$("modeSim").onclick = () => setFireMode("simulate");
+$("modeRep").onclick = () => setFireMode("reports");
 $("btnStep").onclick = () => {
   if (playing) return;
   enqueue(async () => {
@@ -1554,14 +1659,19 @@ async function boot() {
   $("bname").textContent = `${building.building} · ${levels.length} floor${levels.length > 1 ? "s" : ""}`;
   const sel = $("roomSel");
   sel.innerHTML = "";
+  const named = [];
   for (const fl of building.floors) {
     for (const s of fl.spaces) {
-      if (s.type === "elevator") continue;
-      const o = document.createElement("option");
-      o.value = s.id;
-      o.textContent = `F${fl.level} · ${s.label}`;
-      sel.appendChild(o);
+      if (!namedSpace(s)) continue;
+      named.push({ level: fl.level, s, num: roomNumber(s.label) });
     }
+  }
+  named.sort((a, b) => a.level - b.level || a.num.localeCompare(b.num, undefined, { numeric: true }));
+  for (const { level, s } of named) {
+    const o = document.createElement("option");
+    o.value = s.id;
+    o.textContent = `F${level} ${s.label}`;
+    sel.appendChild(o);
   }
   for (const lv of levels) {
     const o = document.createElement("option");

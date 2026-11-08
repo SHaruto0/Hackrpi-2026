@@ -1,12 +1,192 @@
 {
   "add_exit": [
-    {"level": 1, "near": [27.19, 73.7], "width": 1.8, "note": "added in editor (bottom of floor 1)"},
-    {"level": 1, "near": [38.78, 65.44], "width": 1.0, "note": "added in editor (bottom of floor 1)"}
+    {
+      "level": 1,
+      "near": [
+        27.19,
+        73.7
+      ],
+      "width": 1.8,
+      "note": "added in editor (bottom of floor 1)"
+    },
+    {
+      "level": 1,
+      "near": [
+        38.78,
+        65.44
+      ],
+      "width": 1.0,
+      "note": "added in editor (bottom of floor 1)"
+    }
   ],
   "remove_flight": [
-    {"level": 3, "near": [6.8, 61.7], "radius": 2.0, "note": "floor 3 bottom-left outdoor steps (exits stay)"}
+    {
+      "level": 3,
+      "near": [
+        6.8,
+        61.7
+      ],
+      "radius": 2.0,
+      "note": "floor 3 bottom-left outdoor steps (exits stay)"
+    },
+    {
+      "level": 3,
+      "near": [
+        36.73,
+        65.9
+      ],
+      "radius": 1.5
+    },
+    {
+      "level": 2,
+      "near": [
+        82.63,
+        49.86
+      ],
+      "radius": 1.0
+    },
+    {
+      "level": 3,
+      "near": [
+        85.94,
+        56.16
+      ],
+      "radius": 1.0
+    },
+    {
+      "level": 3,
+      "near": [
+        96.73,
+        54.83
+      ],
+      "radius": 1.0
+    },
+    {
+      "level": 3,
+      "near": [
+        97.07,
+        22.9
+      ],
+      "radius": 1.0
+    }
   ],
   "vertical_floors": [
-    {"id": "STAIR-1", "floors": [2, 3], "note": "bottom stair: floor 1 part is a separate exit stair"}
+    {
+      "id": "STAIR-1",
+      "floors": [
+        2,
+        3
+      ],
+      "note": "bottom stair: floor 1 part is a separate exit stair"
+    }
+  ],
+  "exit": [
+    {
+      "level": 3,
+      "near": [
+        10.1,
+        59.8
+      ],
+      "radius": 1.8,
+      "note": "floor 3 bottom-left lobby doors to the outdoor steps (team call)"
+    }
+  ],
+  "link_stairs": [
+    {
+      "id": "STAIR-2",
+      "name": "Spiral stair",
+      "spaces": {
+        "2": "F2-2S01",
+        "3": "F3-3ST2"
+      },
+      "anchor": 3
+    },
+    {
+      "id": "STAIR-13",
+      "name": "Stair 13",
+      "spaces": {
+        "2": "F2-2ST2",
+        "3": "F3-3ST13"
+      },
+      "anchor": 3,
+      "keep_shift": true
+    }
+  ],
+  "clear_walls": [
+    {
+      "level": 3,
+      "box": [
+        21.8,
+        25.8,
+        27.0,
+        28.1
+      ],
+      "note": "open stair 13 entry on floor 3"
+    }
+  ],
+  "shift_floor": [
+    {
+      "level": 3,
+      "dx": 0.0,
+      "dy": 1.75,
+      "note": "floor 3 nudged backward (team call)"
+    }
+  ],
+  "vertical_position": [
+    {
+      "id": "STAIR-1",
+      "level": 2,
+      "xy": [
+        33.75,
+        64.25
+      ],
+      "note": "stair 1 entry on floor 2 (was a sealed cell)"
+    }
+  ],
+  "view_tweaks": {
+    "landings": {
+      "STAIR-1": {
+        "dx": 1.5,
+        "dy": 0.0,
+        "grow": 1.2
+      }
+    }
+  },
+  "move_flight": [
+    {
+      "level": 3,
+      "near": [
+        31.96,
+        65.9
+      ],
+      "radius": 1.5,
+      "dx": 1.18,
+      "dy": 0.0
+    }
+  ],
+  "add_link": [
+    {
+      "id": "STAIR-8",
+      "name": "Stair 8",
+      "floors": [
+        2,
+        3
+      ],
+      "xy": [
+        86.4,
+        62.0
+      ],
+      "note": "3ST8 down to the floor 2 flight"
+    }
+  ],
+  "no_exit": [
+    {
+      "level": 3,
+      "near": [
+        97.03,
+        47.16
+      ],
+      "radius": 1.0
+    }
   ]
 }

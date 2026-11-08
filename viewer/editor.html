@@ -32,7 +32,7 @@
   .dot { width:8px; height:8px; border-radius:50%; background:#6e7681; display:inline-block; }
   .dot.on { background:var(--safe); }
   #saveLabel { color:var(--muted); min-width:52px; }
-  #mid { display:grid; grid-template-columns:200px 1fr 300px; min-height:0; }
+  #mid { display:grid; grid-template-columns:188px 1fr 260px minmax(260px, 320px); min-height:0; }
   #tools, #inspector { overflow:auto; background:var(--panel); padding:10px; min-height:0; }
   #tools { border-right:1px solid var(--line); }
   #inspector { border-left:1px solid var(--line); }
@@ -49,6 +49,22 @@
   .row2 { display:flex; gap:6px; }
   .row2 .field { flex:1; min-width:0; }
   .hint { font-size:12px; margin:8px 0 0; }
+  #chat { display:flex; flex-direction:column; min-height:0; background:var(--panel);
+          border-left:1px solid var(--line); padding:8px 10px; }
+  #chatHead { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  #chatHead h2 { margin:0; }
+  #chatLog { flex:1; overflow:auto; min-height:0; display:flex; flex-direction:column; gap:8px; padding:8px 0; }
+  .bubble { max-width:92%; padding:6px 8px; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
+  .bubble.user { align-self:flex-end; background:var(--accent); }
+  .bubble.assistant { align-self:flex-start; background:#21262d; border:1px solid var(--line); }
+  .bubble.typing { color:var(--muted); }
+  .edit-card { align-self:stretch; border:1px solid var(--line); border-radius:8px; padding:6px 8px; background:#21262d; }
+  .ai-op { display:flex; gap:6px; align-items:flex-start; margin:3px 0; border-radius:4px; padding:2px; }
+  .ai-op input { margin-top:2px; }
+  .ai-op:hover { background:rgba(188,140,255,0.16); }
+  #chatChips { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+  .chip { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:99px; padding:1px 8px; }
+  #chat textarea { min-height:64px; margin:0; }
   h2 { font-size:13px; margin:10px 0 4px; }
   .actions { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
   #issueBox { max-height:34vh; overflow:auto; margin-top:4px; }
@@ -60,7 +76,7 @@
            background:#21262d; border:1px solid var(--line); border-radius:8px; padding:8px 12px; z-index:5; }
   kbd { font:11px ui-monospace, Consolas, monospace; color:var(--muted); border:1px solid var(--line);
         border-radius:4px; padding:0 4px; }
-  @media (max-width: 980px) { #mid { grid-template-columns:168px 1fr 240px; } #search { width:120px; } }
+  @media (max-width: 1100px) { #mid { grid-template-columns:150px 1fr 200px 240px; } #search { width:120px; } }
 </style>
 </head>
 <body>
@@ -137,6 +153,12 @@
       </div>
     </div>
     <aside id="inspector"></aside>
+    <aside id="chat">
+      <div id="chatHead"><h2>AI</h2><button type="button" id="btnNewChat">New chat</button></div>
+      <div id="chatLog"></div>
+      <div id="chatChips"></div>
+      <textarea id="aiText" placeholder="Ask a question or describe a change. Enter sends, Shift+Enter for a new line."></textarea>
+    </aside>
   </div>
   <div id="status"><span id="statLeft"></span><span id="statHint"></span></div>
 </div>
@@ -191,6 +213,9 @@ let mouseOn = false;
 let searchQ = "";
 let searchHits = [];
 let searchAt = 0;
+let chat = [];
+let chatBusy = false;
+let hoverOp = null;
 const view = { zoom: 8, panX: 40, panY: 40, dpr: 1 };
 
 function toast(msg) {
@@ -397,6 +422,8 @@ function bakeAlignment(data) {
 }
 
 function loadRaw(raw, opts = {}) {
+  if (doc) persistChat();
+  hoverOp = null;
   const data = structuredClone(raw);
   const fromServer = opts.fromServer === true || (opts.fromServer !== false && data.grid != null);
   delete data.grid; delete data.exits; delete data.warnings; delete data.levels;
@@ -412,6 +439,7 @@ function loadRaw(raw, opts = {}) {
   const slug = slugName(doc.building);
   if ($("saveName") && (!$("saveName").value || opts.setName)) $("saveName").value = slug;
   if (opts.setName) $("saveName").value = slug;
+  restoreChat();
   buildInspector();
   updateChrome();
   fit();
@@ -1158,6 +1186,7 @@ function render() {
   drawDraft(fl);
   drawOrigin();
   drawLabels(fl);
+  drawAiHighlights(fl);
   updateStatus();
 }
 function tracePoly(poly, close) {
@@ -1404,6 +1433,7 @@ function updateChrome() {
     counts.textContent = `${fl.walls.length} walls, ${fl.spaces.length} rooms, ${fl.doors.length} doors, ${exits} exits`;
   }
   for (const b of document.querySelectorAll("#tools button[data-tool]")) b.classList.toggle("on", b.dataset.tool === tool);
+  updateChatChips();
   render();
 }
 function syncFloorSelect() {
@@ -2234,6 +2264,474 @@ function onKeyUp(e) {
   if (draft) render();
 }
 
+const AI_OP_NAMES = new Set(["add_door", "set_door", "set_space", "delete", "remove", "add_wall", "move_vertical"]);
+function aiOpKey(v) { return String(v || "").toLowerCase().replace(/[\s-]+/g, "_"); }
+function isAiOpName(v) { return AI_OP_NAMES.has(aiOpKey(v)); }
+function opName(op) {
+  if (op.op || op.action) return aiOpKey(op.op || op.action);
+  if (isAiOpName(op.type)) return aiOpKey(op.type);
+  return "";
+}
+function opBag(op) {
+  const nest = ["patch", "set", "fields", "door", "space", "wall", "vertical", "item"]
+    .map((k) => op[k]).find((v) => v && typeof v === "object" && !Array.isArray(v));
+  const bag = nest ? { ...nest } : {};
+  for (const [k, v] of Object.entries(op)) {
+    if (["op", "action", "kind", "target", "level", "summary", "text", "checked", "_on", "door", "wall", "space", "vertical", "item", "patch", "set", "fields"].includes(k)) continue;
+    if (k === "type" && isAiOpName(v)) continue;
+    if (v !== undefined) bag[k] = v;
+  }
+  return bag;
+}
+function opId(op, bag) {
+  for (const v of [op.id, bag && bag.id, op.door, op.space, op.wall, op.vertical, op.target]) {
+    if (typeof v === "string" && v) return v;
+    if (typeof v === "number") return String(v);
+  }
+  return "";
+}
+function aiFloor(op) {
+  if (op.level == null || op.level === "") return current();
+  const fl = doc.floors.find((f) => f.level === +op.level);
+  if (!fl) throw new Error("No floor " + op.level);
+  return fl;
+}
+function asConnects(v) {
+  if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
+  if (typeof v === "string") return v.split(",").map((s) => s.trim()).filter(Boolean);
+  return null;
+}
+function asPoly(v) {
+  if (!Array.isArray(v)) return null;
+  const pts = [];
+  for (const p of v) {
+    const q = asPoint(p);
+    if (!q) return null;
+    pts.push(q);
+  }
+  return pts;
+}
+function asAxis(v) {
+  if (!Array.isArray(v) || v.length < 2 || !Number.isFinite(+v[0]) || !Number.isFinite(+v[1])) return null;
+  return [+v[0], +v[1]];
+}
+function clamp01(v, d) {
+  const n = v == null || v === "" ? d : +v;
+  if (!Number.isFinite(n)) return d;
+  return Math.max(0, Math.min(1, n));
+}
+function applyAiOp(op) {
+  const name = opName(op);
+  const bag = opBag(op);
+  const id = opId(op, bag);
+  if (name === "add_door") return addAiDoor(op, bag, id);
+  if (name === "set_door") return setAiDoor(op, bag, id);
+  if (name === "set_space") return setAiSpace(op, bag, id);
+  if (name === "delete" || name === "remove") return deleteAi(op, id);
+  if (name === "add_wall") return addAiWall(op, bag, id);
+  if (name === "move_vertical") return moveAiVertical(op, bag, id);
+  throw new Error("Unknown edit " + (name || "op"));
+}
+function addAiDoor(op, bag, id) {
+  const fl = aiFloor(op);
+  let doorId = id;
+  if (!doorId || allIds().has(doorId)) doorId = allocId("F" + fl.level + "-D");
+  op.id = doorId;
+  const x = +bag.x, y = +bag.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Door needs x and y");
+  const width = num(bag.width, 0.9);
+  const door = {
+    id: doorId, x, y, width: width > 0 ? width : 0.9, connects: [],
+    exterior_exit: !!bag.exterior_exit, confidence: clamp01(bag.confidence, 1), axis: null,
+  };
+  const connects = asConnects(bag.connects);
+  const axis = asAxis(bag.axis);
+  if (connects) door.connects = connects;
+  else door.connects = inferConnects(fl, x, y, axis || [1, 0]);
+  if (axis) door.axis = axis;
+  else if (doc.wall_style === "faces") {
+    const hit = nearestBoundary(fl, x, y, 1.5);
+    if (hit) door.axis = hit.axis.slice();
+  }
+  fl.doors.push(door);
+}
+function setAiDoor(op, bag, id) {
+  if (!id) throw new Error("Door id missing");
+  let hits = [];
+  for (const fl of doc.floors) {
+    const d = byId(fl.doors, id);
+    if (d) hits.push(d);
+  }
+  if (op.level != null && op.level !== "") {
+    const fl = aiFloor(op);
+    hits = hits.filter((d) => fl.doors.includes(d));
+  }
+  if (!hits.length) throw new Error("No door " + id);
+  const d = hits[0];
+  if (bag.x != null && bag.x !== "") d.x = num(bag.x);
+  if (bag.y != null && bag.y !== "") d.y = num(bag.y);
+  if (bag.width != null && bag.width !== "") d.width = num(bag.width, d.width);
+  if (bag.exterior_exit != null) d.exterior_exit = !!bag.exterior_exit;
+  if (bag.confidence != null && bag.confidence !== "") d.confidence = clamp01(bag.confidence, d.confidence);
+  const connects = asConnects(bag.connects);
+  if (connects) d.connects = connects;
+  if (bag.axis === null) d.axis = null;
+  const axis = asAxis(bag.axis);
+  if (axis) d.axis = axis;
+}
+function setAiSpace(op, bag, id) {
+  if (!id) throw new Error("Room id missing");
+  let hits = [];
+  for (const fl of doc.floors) {
+    const s = byId(fl.spaces, id);
+    if (s) hits.push(s);
+  }
+  if (op.level != null && op.level !== "") {
+    const fl = aiFloor(op);
+    hits = hits.filter((s) => fl.spaces.includes(s));
+  }
+  if (!hits.length) throw new Error("No room " + id);
+  const s = hits[0];
+  if (typeof bag.label === "string") s.label = bag.label.trim() || s.id;
+  if (typeof bag.type === "string" && bag.type) s.type = bag.type;
+  if (bag.multi_floor != null) s.multi_floor = !!bag.multi_floor;
+  if (bag.confidence != null && bag.confidence !== "") s.confidence = clamp01(bag.confidence, s.confidence);
+  const poly = asPoly(bag.polygon);
+  if (poly && poly.length >= 3) s.polygon = poly;
+}
+function deleteAi(op, id) {
+  const kind = String(op.kind || op.target || "").toLowerCase();
+  if (!id && kind !== "outline") throw new Error("Delete needs an id");
+  const limit = op.level != null && op.level !== "" ? aiFloor(op) : null;
+  const floors = limit ? [limit] : doc.floors;
+  let n = 0;
+  const want = (k) => !kind || kind === k;
+  if (want("wall")) for (const fl of floors) {
+    const before = fl.walls.length;
+    fl.walls = fl.walls.filter((w) => w.id !== id);
+    n += before - fl.walls.length;
+  }
+  if (want("space") || want("room")) for (const fl of floors) {
+    if (!fl.spaces.some((s) => s.id === id)) continue;
+    fl.spaces = fl.spaces.filter((s) => s.id !== id);
+    for (const d of fl.doors) d.connects = (d.connects || []).filter((c) => c !== id);
+    n += 1;
+  }
+  if (want("door")) for (const fl of floors) {
+    const before = fl.doors.length;
+    fl.doors = fl.doors.filter((d) => d.id !== id);
+    n += before - fl.doors.length;
+  }
+  if (want("vertical") || want("stairs") || want("elevator") || want("ramp")) {
+    const before = doc.vertical_connections.length;
+    doc.vertical_connections = doc.vertical_connections.filter((v) => v.id !== id);
+    n += before - doc.vertical_connections.length;
+  }
+  if (kind === "outline") { (limit || current()).outline = []; n += 1; }
+  if (!n) throw new Error("Nothing to delete" + (id ? " " + id : ""));
+}
+function addAiWall(op, bag, id) {
+  const fl = aiFloor(op);
+  const x1 = +bag.x1, y1 = +bag.y1, x2 = +bag.x2, y2 = +bag.y2;
+  if (![x1, y1, x2, y2].every(Number.isFinite)) throw new Error("Wall needs x1, y1, x2, y2");
+  if (Math.hypot(x2 - x1, y2 - y1) < 0.05) throw new Error("That wall is too short.");
+  let wallId = id;
+  if (!wallId || allIds().has(wallId)) wallId = allocId("F" + fl.level + "-W");
+  op.id = wallId;
+  fl.walls.push({ id: wallId, x1, y1, x2, y2, exterior: !!bag.exterior, confidence: clamp01(bag.confidence, 1) });
+}
+function moveAiVertical(op, bag, id) {
+  if (!id) throw new Error("Stair id missing");
+  const v = byId(doc.vertical_connections, id);
+  if (!v) throw new Error("No stair " + id);
+  v.positions = v.positions || {};
+  const pos = bag.positions && typeof bag.positions === "object" ? bag.positions : null;
+  if (pos) {
+    let n = 0;
+    for (const [k, p] of Object.entries(pos)) {
+      const q = asPoint(p);
+      if (!q) continue;
+      v.positions[String(parseInt(k, 10))] = q;
+      n += 1;
+    }
+    if (n) return;
+  }
+  const lv = op.level != null && op.level !== "" ? +op.level : floorLevel;
+  const q = asPoint([bag.x, bag.y]);
+  if (!q) throw new Error("Stair needs a point");
+  v.positions[String(lv)] = q;
+}
+function opLine(op) {
+  if (typeof op.summary === "string" && op.summary.trim()) return op.summary.trim();
+  if (typeof op.text === "string" && op.text.trim()) return op.text.trim();
+  const bag = opBag(op);
+  const id = opId(op, bag);
+  const extra = [];
+  if (bag.exterior_exit === true) extra.push("exit");
+  if (bag.exterior_exit === false) extra.push("not exit");
+  if (typeof bag.label === "string" && bag.label) extra.push(bag.label);
+  else if (typeof bag.type === "string" && bag.type) extra.push(bag.type);
+  const name = opName(op) || "change";
+  return name + (id ? " " + id : "") + (extra.length ? ": " + extra.join(", ") : "");
+}
+function proposalOps(data) {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== "object") return [];
+  if (Array.isArray(data.ops)) return data.ops;
+  if (Array.isArray(data.operations)) return data.operations;
+  if (Array.isArray(data.edits)) return data.edits;
+  return [];
+}
+let chatGen = 0;
+function chatKey() {
+  return "firesight-chat:" + ((doc && doc.building) || "map");
+}
+function persistChat() {
+  if (!doc || location.hash === "#selftest") return;
+  try {
+    localStorage.setItem(chatKey(), JSON.stringify(chat.map((m) => ({
+      role: m.role, text: m.text, summary: m.summary || "", applied: !!m.applied,
+      ops: (m.ops || []).map((op) => ({ ...op })),
+    }))));
+  } catch (e) { /* keep the in-memory chat if storage is full */ }
+}
+function updateChatChips() {
+  const box = $("chatChips");
+  if (!box) return;
+  const selText = sel && sel.id ? (sel.kind + " " + sel.id) : "No selection";
+  box.replaceChildren(
+    h("span", { class: "chip", text: "Floor " + floorLevel }),
+    h("span", { class: "chip", text: selText }),
+  );
+}
+function paintChat() {
+  const log = $("chatLog");
+  if (!log) return;
+  const near = log.scrollHeight - log.scrollTop - log.clientHeight < 48;
+  const was = hoverOp;
+  hoverOp = null;
+  const nodes = [];
+  for (const msg of chat) nodes.push(...messageNodes(msg));
+  if (chatBusy) nodes.push(h("div", { class: "bubble assistant typing", text: "…" }));
+  log.replaceChildren(...nodes);
+  if (near) log.scrollTop = log.scrollHeight;
+  if (was) render();
+}
+function messageNodes(msg) {
+  const nodes = [];
+  if (msg.text) nodes.push(h("div", { class: "bubble " + msg.role, text: msg.text }));
+  if (msg.role === "assistant" && msg.ops && msg.ops.length) nodes.push(editCard(msg));
+  return nodes;
+}
+function editCard(msg) {
+  const rows = msg.ops.map((op) => {
+    const cb = h("input", { type: "checkbox" });
+    cb.checked = !!op._on;
+    const row = h("label", { class: "ai-op" }, [cb, opLine(op)]);
+    cb.addEventListener("change", () => {
+      op._on = cb.checked;
+      const apply = row.parentNode && row.parentNode.querySelector("[data-act=apply]");
+      if (apply) apply.disabled = !!msg.applied || !msg.ops.some((o) => o._on);
+    });
+    row.addEventListener("mouseenter", () => { hoverOp = op; render(); });
+    row.addEventListener("mouseleave", () => { if (hoverOp === op) { hoverOp = null; render(); } });
+    return row;
+  });
+  const apply = h("button", { type: "button", class: "primary", text: "Apply" });
+  apply.dataset.act = "apply";
+  apply.disabled = !!msg.applied || !msg.ops.some((o) => o._on);
+  apply.addEventListener("click", () => applyCard(msg));
+  const revert = h("button", { type: "button", text: "Revert" });
+  revert.disabled = !msg.snap;
+  revert.addEventListener("click", () => revertCard(msg));
+  const kids = rows.slice();
+  if (msg.summary && msg.summary !== msg.text) kids.unshift(h("p", { class: "hint", text: msg.summary }));
+  kids.push(h("div", { class: "actions" }, [apply, revert]));
+  return h("div", { class: "edit-card" }, kids);
+}
+function restoreChat() {
+  chat = [];
+  if (location.hash !== "#selftest") {
+    try {
+      const data = JSON.parse(localStorage.getItem(chatKey()) || "[]");
+      if (Array.isArray(data)) {
+        chat = data.filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.text === "string").map((m) => ({
+          role: m.role,
+          text: m.text,
+          summary: typeof m.summary === "string" ? m.summary : "",
+          applied: !!m.applied,
+          snap: null,
+          ops: Array.isArray(m.ops) ? m.ops.filter((op) => op && typeof op === "object").map((op) => ({ ...op, _on: op._on !== false })) : [],
+        }));
+      }
+    } catch (e) { chat = []; }
+  }
+  paintChat();
+}
+function newChat() {
+  chatGen += 1;
+  chat = [];
+  chatBusy = false;
+  persistChat();
+  paintChat();
+}
+function pushAssistant(text, ops, summary) {
+  chat.push({
+    role: "assistant",
+    text: text || "",
+    summary: summary || "",
+    applied: false,
+    snap: null,
+    ops: (ops || []).map((op) => ({ ...op, _on: op.checked !== false })),
+  });
+}
+async function askAi() {
+  if (!doc || chatBusy) return;
+  const instruction = $("aiText").value.trim();
+  if (!instruction) return;
+  const prior = chat.slice(-10).map((m) => ({ role: m.role, text: m.text }));
+  const gen = chatGen;
+  chat.push({ role: "user", text: instruction, ops: [] });
+  $("aiText").value = "";
+  chatBusy = true;
+  paintChat();
+  persistChat();
+  try {
+    const r = await fetch("/api/ai/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        instruction,
+        level: floorLevel,
+        building: exportDoc(),
+        selection: sel && sel.id ? [sel.id] : [],
+        history: prior,
+      }),
+    });
+    if (gen !== chatGen) return;
+    if (r.status === 503) { pushAssistant("AI needs GEMINI_API_KEY"); toast("AI needs GEMINI_API_KEY"); return; }
+    if (!r.ok) throw new Error((await r.text()) || ("AI edit failed (" + r.status + ")"));
+    const data = await r.json();
+    const ops = proposalOps(data).filter((op) => op && typeof op === "object");
+    const summary = data && typeof data === "object" && !Array.isArray(data) ? String(data.summary || data.explanation || "") : "";
+    const reply = data && typeof data === "object" && !Array.isArray(data) && data.reply ? String(data.reply) : (summary || (ops.length ? "Review these changes." : "No edits."));
+    pushAssistant(reply, ops, summary);
+  } catch (err) {
+    if (gen !== chatGen) return;
+    const message = err.message || String(err);
+    pushAssistant(message);
+    toast(message);
+  } finally {
+    if (gen === chatGen) {
+      chatBusy = false;
+      paintChat();
+      persistChat();
+    }
+  }
+}
+function applyCard(msg) {
+  if (!doc || msg.applied) return;
+  const chosen = (msg.ops || []).filter((op) => op._on);
+  if (!chosen.length) return;
+  if (pendingBefore) commit(true);
+  const prevSave = saveState;
+  const snapDoc = structuredClone(doc);
+  const snapSel = sel ? { ...sel } : null;
+  const snap = { doc: snapDoc, floor: floorLevel, sel: snapSel, saveState: prevSave };
+  history.push({ doc: structuredClone(snapDoc), floor: floorLevel, sel: snapSel ? { ...snapSel } : null });
+  if (history.length > 12) history.shift();
+  future = [];
+  const failed = [];
+  for (const op of chosen) {
+    try { applyAiOp(op); }
+    catch (err) { failed.push(err.message || String(err)); }
+  }
+  if (failed.length === chosen.length) {
+    history.pop();
+    doc = snapDoc;
+    saveState = prevSave;
+    buildInspector();
+    updateChrome();
+    toast(failed[0]);
+    return;
+  }
+  msg.snap = snap;
+  msg.applied = true;
+  saveState = "dirty";
+  if (!doc.floors.some((f) => f.level === floorLevel)) floorLevel = doc.floors[0].level;
+  if (sel && !selectionAlive()) sel = null;
+  buildInspector();
+  updateChrome();
+  paintChat();
+  persistChat();
+  toast(failed.length ? failed[0] : (chosen.length === 1 ? "Applied 1 change." : "Applied " + chosen.length + " changes."));
+}
+function revertCard(msg) {
+  if (!msg.snap || !doc) return;
+  doc = structuredClone(msg.snap.doc);
+  floorLevel = msg.snap.floor;
+  sel = msg.snap.sel ? { ...msg.snap.sel } : null;
+  saveState = msg.snap.saveState || "dirty";
+  draft = null;
+  hover = null;
+  msg.applied = false;
+  if (!doc.floors.some((f) => f.level === floorLevel)) floorLevel = doc.floors[0].level;
+  if (sel && !selectionAlive()) sel = null;
+  buildInspector();
+  updateChrome();
+  paintChat();
+  persistChat();
+}
+function drawAiHighlights(fl) {
+  if (!hoverOp) return;
+  ctx.save();
+  ctx.strokeStyle = "#bc8cff";
+  ctx.fillStyle = "rgba(188,140,255,0.28)";
+  ctx.lineWidth = 3 / view.zoom;
+  ctx.setLineDash([5 / view.zoom, 4 / view.zoom]);
+  for (const op of [hoverOp]) {
+    const name = opName(op);
+    const bag = opBag(op);
+    const id = op.id || opId(op, bag);
+    const lv = op.level != null && op.level !== "" ? +op.level : fl.level;
+    if (name === "move_vertical") {
+      const v = id && byId(doc.vertical_connections, id);
+      if (!v || !v.floors.includes(fl.level)) continue;
+      const spec = bag.positions && asPoint(bag.positions[String(fl.level)]);
+      const p = spec || (lv === fl.level && Number.isFinite(+bag.x) && Number.isFinite(+bag.y) ? [+bag.x, +bag.y] : vertPoint(v, fl.level));
+      drawDiamond(p[0], p[1], Math.max(0.45, 9 / view.zoom), "rgba(188,140,255,0.35)", "#bc8cff");
+      continue;
+    }
+    if (lv !== fl.level) continue;
+    const kind = String(op.kind || op.target || "").toLowerCase();
+    if (name === "add_wall" || ((name === "delete" || name === "remove") && (kind === "wall" || (kind === "" && id && byId(fl.walls, id))))) {
+      const w = id && byId(fl.walls, id);
+      const x1 = w ? w.x1 : +bag.x1, y1 = w ? w.y1 : +bag.y1, x2 = w ? w.x2 : +bag.x2, y2 = w ? w.y2 : +bag.y2;
+      if ([x1, y1, x2, y2].every(Number.isFinite)) {
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      if (name !== "delete" && name !== "remove") continue;
+      if (kind === "wall") continue;
+    }
+    if (name === "add_door" || name === "set_door" || ((name === "delete" || name === "remove") && (kind === "door" || (id && byId(fl.doors, id))))) {
+      const d = id && byId(fl.doors, id);
+      const x = d ? d.x : +bag.x, y = d ? d.y : +bag.y;
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max((d ? d.width : num(bag.width, 0.9)) / 2, 0.35), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (name === "add_door" || name === "set_door" || kind === "door") continue;
+    }
+    if (name === "set_space" || ((name === "delete" || name === "remove") && (kind === "space" || kind === "room" || (id && byId(fl.spaces, id))))) {
+      const s = id && byId(fl.spaces, id);
+      const poly = s && s.polygon.length >= 3 ? s.polygon : asPoly(bag.polygon);
+      if (poly && poly.length >= 3) { tracePoly(poly, true); ctx.fill(); ctx.stroke(); }
+    }
+  }
+  ctx.restore();
+}
+
 function bind() {
   const typeSel = $("roomType");
   for (const t of SPACE_TYPES) typeSel.append(h("option", { value: t, text: t }));
@@ -2252,6 +2750,10 @@ function bind() {
   $("btnSave").addEventListener("click", saveFile);
   $("btnPush").addEventListener("click", pushToViewer);
   $("btnCheck").addEventListener("click", serverCheck);
+  $("btnNewChat").addEventListener("click", newChat);
+  $("aiText").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); askAi(); }
+  });
   $("btnFit").addEventListener("click", () => fit());
   $("btnZoomIn").addEventListener("click", () => { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1.15); });
   $("btnZoomOut").addEventListener("click", () => { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1 / 1.15); });
