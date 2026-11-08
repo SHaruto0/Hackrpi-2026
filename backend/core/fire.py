@@ -60,13 +60,23 @@ class FireSim:
         self.origins.append({"level": g.levels[fi], "x": cx, "y": cy})
         return True
 
-    def ignite_room(self, room_id):
+    def ignite_room(self, room_id, whole=False):
+        """Fire at the room center, or (whole=True) the entire room at once."""
         g = self.grid
         info = g.room_by_id.get(room_id)
         if info is None:
             raise KeyError(room_id)
         fi = g.level_index[info["level"]]
         in_room = g.room[fi] == info["index"]
+        if whole:
+            mask = in_room & g.walkable[fi]
+            if not mask.any():
+                return False
+            self.fire[fi] |= mask
+            self.smoke[fi][mask] = 1.0
+            cx, cy = info["centroid"]
+            self.origins.append({"level": g.levels[fi], "x": cx, "y": cy})
+            return True
         cell = g.nearest_walkable(fi, *info["centroid"], max_dist=50.0, mask=in_room)
         if cell is None:
             return False

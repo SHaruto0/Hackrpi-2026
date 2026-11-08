@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Firesight AR",
+    "slug": "firesight-mobile-ar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Firesight uses your camera to pinpoint your 3D indoor position and overlay AR evacuation arrows."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Firesight to use your camera for 3D visual positioning and AR navigation."
+        }
+      ],
+      "expo-audio"
+    ],
+    "extra": {
+      "serverUrl": "https://nolan-nonperturbing-ela.ngrok-free.dev"
+    }
+  }
+}

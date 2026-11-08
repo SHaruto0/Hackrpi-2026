@@ -262,7 +262,7 @@ def _print_html(rooms, base):
     jobs = []
     for i, info in enumerate(rooms):
         code = str(info["id"])
-        url = f"{base}/phone.html?qr={quote(code, safe='')}"
+        url = f"FIRESIGHT:{code}"   # read by the mobile app's QR scanner
         label = escape(str(info.get("label") or code))
         meta = escape(f"Floor {info['level']}, {code}")
         cards.append(

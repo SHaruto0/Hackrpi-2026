@@ -1179,7 +1179,8 @@ def transcribe(content, filename="audio.webm", content_type="application/octet-s
     except httpx.HTTPError:
         raise HTTPException(503, "Fish Audio transcription failed")
     if resp.status_code != 200:
-        raise HTTPException(503, "Fish Audio transcription failed")
+        why = " ".join(resp.text.split())[:160]
+        raise HTTPException(503, f"Fish Audio transcription failed ({resp.status_code}: {why})")
     try:
         body = resp.json()
     except Exception:

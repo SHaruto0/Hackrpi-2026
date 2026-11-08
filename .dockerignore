@@ -1,0 +1,17 @@
+.git
+.team
+.env
+**/.env
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/*.md
+!deploy/vultr.md
+compute
+tests
+data/archive
+data/plans
+data/tts_cache
+data/frames
+agent-transcripts
+*.log

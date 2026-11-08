@@ -259,7 +259,7 @@ Returns the stored records: `{person_id, status, level, x, y, room_id, updated_a
 
 Speech synthesis is Fish Audio TTS. Clips are cached at `data/tts_cache/<sha1>.mp3`. The hash covers style, voice id, and the request text. A repeat request is served from disk.
 
-`FISH_VOICE_ID` and `FISH_VOICE_ID_FF` are voice model ids (`fish.audio/m/<id>`). They are not the Talk agent id. Agent setup is in `docs/FISH_AGENT.md`.
+`FISH_VOICE_ID` is the one voice model id for every role (`fish.audio/m/<id>`). It is not the Talk agent id. Agent setup is in `docs/FISH_AGENT.md`.
 
 Speech-to-text is Fish Audio ASR (`transcribe-1-pro`) on `POST /api/voice/stt`. The same call is used by `POST /api/reports/audio`. Markers such as `<|bg|>` are stripped from the transcript. Language is English. The API key is never returned.
 

@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Firesight 3D</title>
+<script>{ const q = new URLSearchParams(location.search);
+  if (q.get("embed") === "1") document.documentElement.classList.add("embed");
+  if (q.get("bare") === "1") document.documentElement.classList.add("bare"); }</script>
 <style>
   :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --text:#e6edf3; --muted:#8b949e;
           --fire:#ff4d3d; --smoke:#d9a441; --safe:#3fb950; --route:#58a6ff; }
@@ -42,10 +45,26 @@
   #tip { position:fixed; z-index:7; display:none; pointer-events:none; background:#21262d; color:var(--text);
          border:1px solid var(--line); border-radius:4px; padding:3px 6px; font-size:12px; max-width:240px; }
   @media (max-width: 640px) { #panel { width:calc(100% - 24px); max-height:45%; } #hint { display:none; } }
+  html.embed #panel, html.embed #hint { display:none; }
+  html.embed .lbl { color:#e7eef6; background:transparent; font-weight:500; padding:0;
+                    text-shadow:0 1px 2px rgba(0,0,0,.7); }
+  #embedFire { display:none; }
+  html.bare #embedFire, html.bare .fsnav-btn, html.bare .fsnav-drawer, html.bare #toast { display:none !important; }
+  html.embed #embedFire { display:flex; gap:6px; align-items:center; position:fixed; top:8px; left:8px; z-index:5; }
+  html.embed #embedFire button { font-size:12px; padding:4px 8px; }
+  html.embed #embedFire .row { display:flex; gap:4px; align-items:center; margin:0; font-size:12px;
+    background:rgba(20,26,34,.75); color:#e7eef6; padding:3px 6px; border-radius:6px; }
+  html.embed #embedFire .row label { margin:0; white-space:nowrap; }
+  html.embed #embedFire #gap { width:80px; }
+  #btnEmbedIgnite.on { background:var(--fire); border-color:var(--fire); color:#fff; }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="embedFire">
+  <button type="button" id="btnEmbedIgnite">🔥 Click to start fire</button>
+  <button type="button" id="btnEmbedReset">Reset</button>
+</div>
 <div id="panel">
   <h1>Firesight</h1>
   <div class="sub" id="bname">Loading building…</div>
@@ -117,6 +136,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
+const EMBED = new URLSearchParams(location.search).get("embed") === "1";
 const API = "";
 const WALL_H = 1.2;
 const STEP_N = 12;
@@ -131,7 +151,7 @@ const SKIP_ID = /-U\d+$|VOID/;
 
 const app = document.getElementById("app");
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x2a313c);
 app.appendChild(renderer.domElement);
@@ -155,8 +175,10 @@ scene.add(sun);
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.25 : 1.5));
   renderer.setSize(innerWidth, innerHeight);
   labelRenderer.setSize(innerWidth, innerHeight);
+  requestRender();
 });
 
 let building = null, grid = null, levels = [];
@@ -165,6 +187,7 @@ let gap = 9;
 const floorGroups = new Map();
 const roomMeshes = new Map();
 const hazardMeshes = new Map();
+const hazardList = [];
 const plates = [];
 const walkMask = new Map();
 const solidMask = new Map();
@@ -179,6 +202,43 @@ wallUnit.userData.shared = true;
 let verticalGroup = new THREE.Group(); scene.add(verticalGroup);
 let ghostGroup = new THREE.Group(); scene.add(ghostGroup);
 let routeGroup = new THREE.Group(); scene.add(routeGroup);
+const youGroup = new THREE.Group();
+youGroup.visible = false;
+youGroup.renderOrder = 4;
+const youDot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.36, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+);
+const youGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.72, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.32, depthWrite: false })
+);
+const youRingGeo = new THREE.RingGeometry(0.52, 0.74, 40);
+youRingGeo.rotateX(-Math.PI / 2);
+const youRing = new THREE.Mesh(youRingGeo, new THREE.MeshBasicMaterial({
+  color: 0x58a6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false,
+}));
+youRing.position.y = 0.06;
+const youConeGeo = new THREE.ConeGeometry(0.9, 2.6, 28, 1, true);
+youConeGeo.translate(0, 1.15, 0);
+youConeGeo.rotateX(Math.PI / 2);
+const youCone = new THREE.Mesh(youConeGeo, new THREE.MeshBasicMaterial({
+  color: 0x7cb4ff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
+}));
+youCone.visible = false;
+youGroup.add(youGlow, youDot, youRing, youCone);
+scene.add(youGroup);
+let embedLevel = null, embedPath = null, embedFollow = true, pendingPose = null;
+const embedPose = {
+  active: false,
+  from: new THREE.Vector3(),
+  to: new THREE.Vector3(),
+  t0: 0,
+  dur: 460,
+  headOn: false,
+  headFrom: 0,
+  headTo: 0,
+};
 let allRoutesGroup = new THREE.Group(); scene.add(allRoutesGroup);
 const stepUnit = new THREE.BoxGeometry(1, 1, 1);
 stepUnit.userData.shared = true;
@@ -194,7 +254,18 @@ const HALL_RING = 36;
 let lastStart = null, cachedRoute = null, cachedAll = null;
 let abOn = false, abStart = null, abEnd = null, abRoom = "";
 let playing = false, playToken = 0, playTick = 0, showAll = false, ignite = false, fireMode = "simulate";
-let lastState = null, labelsFar = false, labelDomDirty = true;
+let lastState = null, labelDomDirty = true;
+const labelObjs = [];
+const _labelPos = new THREE.Vector3();
+const embedGoal = new THREE.Vector3();
+const embedLook = new THREE.Vector3();
+const LABEL_MAX_M2 = 35 * 35;
+const LABEL_MAX_N = 40;
+const rankObj = new Array(LABEL_MAX_N);
+const rankD2 = new Float64Array(LABEL_MAX_N);
+let rankN = 0, labelMark = 0, labelsShowing = 0, labelVisAt = 0;
+let raf = 0, renderDirty = true, controlUntil = 0, inFrame = false;
+let statePollTimer = 0, statePollBusy = false, lastPollAt = 0;
 let chain = Promise.resolve();
 let toastTimer = null;
 
@@ -260,6 +331,10 @@ function clearGroup(g) {
       const list = Array.isArray(mat) ? mat : [mat];
       for (const m of list) if (m && !m.userData?.shared) mats.add(m);
     }
+    if (o.isCSS2DObject) {
+      const i = labelObjs.indexOf(o);
+      if (i >= 0) labelObjs.splice(i, 1);
+    }
     if (o.element && o.element.parentNode) o.element.remove();
   });
   for (const geo of geos) geo.dispose();
@@ -304,6 +379,7 @@ function makeLabel(text, full, x, y, z, color) {
   const lbl = new CSS2DObject(div);
   lbl.position.set(x, y, z);
   lbl.userData.isLabel = true;
+  labelObjs.push(lbl);
   return lbl;
 }
 
@@ -459,6 +535,7 @@ function buildBuilding() {
   floorGroups.clear();
   roomMeshes.clear();
   hazardMeshes.clear();
+  hazardList.length = 0;
   plates.length = 0;
   clearGroup(verticalGroup);
   clearGroup(routeGroup);
@@ -527,7 +604,9 @@ function buildBuilding() {
     smoke.frustumCulled = false;
     g.add(fire);
     g.add(smoke);
-    hazardMeshes.set(fl.level, { fire, smoke, fireCap: cap, smokeCap: cap });
+    const hm = { fire, smoke, fireCap: cap, smokeCap: cap };
+    hazardMeshes.set(fl.level, hm);
+    hazardList.push(hm);
 
     scene.add(g);
     floorGroups.set(fl.level, g);
@@ -542,7 +621,8 @@ function layoutFloors() {
   buildFlightSteps();
   applyFloorFilter();
   if (lastState) applyState(lastState);
-  if (lastStart && cachedRoute) drawSelected(lastStart.level, lastStart.x, lastStart.y, cachedRoute);
+  if (EMBED && embedPath) drawEmbedRoute(embedPath);
+  else if (lastStart && cachedRoute) drawSelected(lastStart.level, lastStart.x, lastStart.y, cachedRoute);
   if (cachedAll) drawAllLines(cachedAll);
 }
 
@@ -1274,13 +1354,52 @@ function addSingleFloorMarks(lv) {
     ghostGroup.add(makeLabel(text, text, p[0], levelY(lv) + 2.6, p[1], "#8fdf9a"));
   }
 }
+function setFloorGhost(group, ghost) {
+  const mul = ghost ? 0.2 : 1;
+  group.traverse((obj) => {
+    if (!obj.material || obj.isCSS2DObject) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (m.userData && m.userData.shared) continue;
+      if (m.userData._op0 == null) {
+        m.userData._op0 = m.opacity;
+        m.userData._tr0 = m.transparent;
+        m.userData._dw0 = m.depthWrite;
+      }
+      m.userData.embedGhost = mul;
+      if (ghost) {
+        m.transparent = true;
+        m.opacity = m.userData._op0 * mul;
+        m.depthWrite = false;
+      } else {
+        m.opacity = m.userData._op0;
+        m.transparent = m.userData._tr0;
+        m.depthWrite = m.userData._dw0;
+      }
+      m.needsUpdate = true;
+    }
+  });
+}
 function applyFloorFilter() {
+  if (EMBED && embedLevel != null && floorGroups.size) {
+    for (const [lv, g] of floorGroups) {
+      g.visible = true;
+      setFloorGhost(g, Number(lv) !== Number(embedLevel));
+    }
+    clearGroup(ghostGroup);
+    if (building && grid) addSingleFloorMarks(Number(embedLevel));
+    applyLabelVisibility();
+    labelDomDirty = true;
+    requestRender();
+    return;
+  }
   const v = $("floorSel").value;
   for (const [lv, g] of floorGroups) g.visible = v === "all" || String(lv) === v;
   clearGroup(ghostGroup);
   if (v !== "all" && building && grid) addSingleFloorMarks(Number(v));
   applyLabelVisibility();
   labelDomDirty = true;
+  requestRender();
 }
 
 function frameCamera() {
@@ -1293,26 +1412,87 @@ function frameCamera() {
   camera.updateProjectionMatrix();
   syncLabelDistance();
 }
-function labelFarLimit() {
-  if (!grid) return 80;
-  return Math.max(grid.cols, grid.rows) * grid.cell * 0.72;
-}
 function syncLabelDistance() {
-  const far = camera.position.distanceTo(controls.target) > labelFarLimit();
-  if (far !== labelsFar) labelDomDirty = true;
-  labelsFar = far;
+  labelVisAt = 0;
   applyLabelVisibility();
+  requestRender();
+}
+function owningFloor(o) {
+  let p = o.parent;
+  while (p) {
+    if (p.userData && p.userData.level != null && floorGroups.get(p.userData.level) === p) return p;
+    p = p.parent;
+  }
+  return null;
+}
+function floorShown(g) {
+  if (!g || !g.visible) return false;
+  if (EMBED && embedLevel != null) return Number(g.userData.level) === Number(embedLevel);
+  return true;
+}
+function labelFloorOk(o, allFloors) {
+  const fg = owningFloor(o);
+  if (fg) return floorShown(fg);
+  if (o.userData && o.userData.kind === "hall") return allFloors;
+  let y = o.position.y;
+  let p = o.parent;
+  while (p && p !== scene) { y += p.position.y; p = p.parent; }
+  const band = Math.max(gap * 0.65, 2);
+  for (const g of floorGroups.values()) {
+    if (floorShown(g) && Math.abs(y - g.position.y) < band) return true;
+  }
+  return false;
+}
+function rankInsert(o, d2) {
+  let i = rankN;
+  if (i < LABEL_MAX_N) rankN++;
+  else if (d2 >= rankD2[LABEL_MAX_N - 1]) return;
+  else i = LABEL_MAX_N - 1;
+  while (i > 0 && d2 < rankD2[i - 1]) {
+    rankD2[i] = rankD2[i - 1];
+    rankObj[i] = rankObj[i - 1];
+    i--;
+  }
+  rankD2[i] = d2;
+  rankObj[i] = o;
 }
 function applyLabelVisibility() {
-  const on = $("btnLabels").classList.contains("on") && !labelsFar;
-  const allFloors = $("floorSel").value === "all";
-  for (const g of floorGroups.values()) {
-    g.traverse((o) => { if (o.isCSS2DObject) o.visible = on && g.visible; });
-  }
+  const on = $("btnLabels").classList.contains("on");
+  const allFloors = EMBED ? embedLevel == null : $("floorSel").value === "all";
   verticalGroup.traverse((o) => {
     if (o.userData && o.userData.kind === "hall" && !o.isCSS2DObject) o.visible = allFloors;
-    if (o.isCSS2DObject) o.visible = on && (o.userData.kind !== "hall" || allFloors);
   });
+  let w = 0;
+  for (let i = 0; i < labelObjs.length; i++) {
+    if (labelObjs[i].parent) labelObjs[w++] = labelObjs[i];
+  }
+  labelObjs.length = w;
+  rankN = 0;
+  labelMark++;
+  if (on && w) scene.updateMatrixWorld(true);
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  for (let i = 0; i < w; i++) {
+    const o = labelObjs[i];
+    if (!on || !labelFloorOk(o, allFloors)) continue;
+    o.getWorldPosition(_labelPos);
+    const dx = _labelPos.x - cx, dy = _labelPos.y - cy, dz = _labelPos.z - cz;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < LABEL_MAX_M2) rankInsert(o, d2);
+  }
+  for (let i = 0; i < rankN; i++) rankObj[i].userData._lm = labelMark;
+  let changed = false;
+  for (let i = 0; i < w; i++) {
+    const o = labelObjs[i];
+    const next = on && o.userData._lm === labelMark;
+    if (o.visible !== next) { o.visible = next; changed = true; }
+  }
+  labelsShowing = rankN;
+  if (changed) labelDomDirty = true;
+}
+function maybeUpdateLabels(now) {
+  if (now - labelVisAt < 200) return;
+  labelVisAt = now;
+  applyLabelVisibility();
 }
 
 const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color(), GRAY = new THREE.Color(0x777777);
@@ -1373,6 +1553,7 @@ function applyState(state) {
     if (hm.smoke.instanceColor) hm.smoke.instanceColor.needsUpdate = true;
   }
   recolorStairs();
+  requestRender();
 }
 
 function rampClimb(pLo, pHi, y0, y1) {
@@ -1451,6 +1632,138 @@ function pathPoints(path) {
   }
   return out;
 }
+function drawEmbedRoute(path) {
+  embedPath = path || [];
+  if (!grid) return;
+  clearGroup(routeGroup);
+  const pts = pathPoints(embedPath);
+  if (pts.length >= 2) drawTube(routeGroup, pts, COLORS.route, 0.22);
+  if (pts.length) {
+    const end = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 12, 8),
+      new THREE.MeshBasicMaterial({ color: COLORS.safe })
+    );
+    end.position.copy(pts[pts.length - 1]);
+    routeGroup.add(end);
+  }
+  requestRender();
+}
+function embedHeadingNow() {
+  const u = Math.min(1, (performance.now() - embedPose.t0) / embedPose.dur);
+  const k = u * u * (3 - 2 * u);
+  let d = ((embedPose.headTo - embedPose.headFrom + 540) % 360) - 180;
+  return embedPose.headFrom + d * k;
+}
+function applyEmbedPose(data) {
+  const level = Number(data.level), x = Number(data.x), y = Number(data.y);
+  if (!Number.isFinite(level) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (!grid) { pendingPose = data; return; }
+  pendingPose = null;
+  const dest = new THREE.Vector3(x, levelY(level) + 0.45, y);
+  const shownHead = embedPose.headOn ? embedHeadingNow() : null;
+  if (!embedPose.active) {
+    youGroup.position.copy(dest);
+    embedPose.from.copy(dest);
+  } else {
+    embedPose.from.copy(youGroup.position);
+  }
+  embedPose.to.copy(dest);
+  embedPose.t0 = performance.now();
+  embedPose.active = true;
+  youGroup.visible = true;
+  const hasHead = data.heading_deg != null && data.heading_deg !== "" && Number.isFinite(Number(data.heading_deg));
+  if (hasHead) {
+    const h = Number(data.heading_deg);
+    embedPose.headFrom = shownHead == null ? h : shownHead;
+    embedPose.headTo = h;
+    embedPose.headOn = true;
+    youCone.visible = true;
+  } else {
+    embedPose.headOn = false;
+    youCone.visible = false;
+  }
+  if (Number(embedLevel) !== level) {
+    embedLevel = level;
+    applyFloorFilter();
+  }
+  requestRender();
+}
+function onEmbedMessage(ev) {
+  if (!EMBED) return;
+  let data = ev.data;
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch (e) { return; }
+  }
+  if (!data || typeof data !== "object") return;
+  if (data.type === "pose") applyEmbedPose(data);
+  else if (data.type === "route") drawEmbedRoute(Array.isArray(data.path) ? data.path : []);
+  else if (data.type === "focus" || data.type === "focusRoom") focusSpace(String(data.id || ""));
+}
+// Fly to a room/stair by space id (command page "Ask" chips).
+function findSpaceMesh(id) {
+  if (roomMeshes.has(id)) return roomMeshes.get(id);
+  const low = id.toLowerCase();
+  for (const [k, m] of roomMeshes) if (k.toLowerCase().endsWith("-" + low) || k.toLowerCase() === low) return m;
+  return null;
+}
+let focusTok = 0;
+function focusSpace(id) {
+  const m = findSpaceMesh(id);
+  if (!m) { showToast("Not found on map: " + id); return; }
+  const lv = m.userData.level;
+  if (!EMBED || embedLevel == null) {
+    const sel = $("floorSel");
+    if ([...sel.options].some((o) => o.value === String(lv))) { sel.value = String(lv); applyFloorFilter(); }
+  }
+  scene.updateMatrixWorld(true);
+  const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+  const t0 = controls.target.clone(), p0 = camera.position.clone();
+  const t1 = c.clone(), p1 = new THREE.Vector3(c.x + 10, c.y + 16, c.z + 13);
+  const tok = ++focusTok, start = performance.now(), dur = 700;
+  const mat = m.material, e0 = mat.emissive ? mat.emissive.getHex() : null;
+  const step = () => {
+    if (tok !== focusTok) return;
+    const now = performance.now(), u = Math.min(1, (now - start) / dur), k = u * u * (3 - 2 * u);
+    controls.target.lerpVectors(t0, t1, k);
+    camera.position.lerpVectors(p0, p1, k);
+    const f = now - start;
+    if (mat.emissive) mat.emissive.setHex(f < 2400 && Math.floor(f / 300) % 2 === 0 ? 0x3fa0ff : e0);
+    labelVisAt = 0;
+    requestRender();
+    if (f < 2400) requestAnimationFrame(step);
+    else if (mat.emissive) { mat.emissive.setHex(e0); requestRender(); }
+  };
+  requestAnimationFrame(step);
+}
+function tickEmbed(now, dt) {
+  let live = false;
+  if (embedPose.active) {
+    const u = Math.min(1, (now - embedPose.t0) / embedPose.dur);
+    const k = u * u * (3 - 2 * u);
+    youGroup.position.lerpVectors(embedPose.from, embedPose.to, k);
+    if (embedPose.headOn) youCone.rotation.y = Math.PI - embedHeadingNow() * Math.PI / 180;
+    if (u >= 1) embedPose.active = false;
+    else live = true;
+  }
+  if (youGroup.visible) {
+    const s = Math.sin(now * 0.004);
+    const pulse = 1 + 0.16 * s;
+    youRing.scale.set(pulse, pulse, pulse);
+    youRing.material.opacity = 0.4 + 0.5 * (0.5 + 0.5 * s);
+    youGlow.material.opacity = 0.18 + 0.16 * (0.5 + 0.5 * s);
+    live = true;
+  }
+  if (embedFollow && youGroup.visible) {
+    const dist = grid ? Math.min(40, Math.max(16, Math.max(grid.cols, grid.rows) * grid.cell * 0.16)) : 22;
+    const p = youGroup.position;
+    embedGoal.set(p.x + dist * 0.55, p.y + dist * 0.7, p.z + dist * 0.72);
+    embedLook.set(p.x, p.y + 0.2, p.z);
+    const a = 1 - Math.exp(-dt / 0.55);
+    camera.position.lerp(embedGoal, a);
+    controls.target.lerp(embedLook, a);
+  }
+  return live;
+}
 function drawTube(group, pts, color, radius) {
   const curve = new THREE.CurvePath();
   for (let i = 0; i < pts.length - 1; i++) {
@@ -1468,6 +1781,7 @@ function drawSelected(level, x, y, r) {
   const info = $("routeInfo");
   if (!r || !r.reachable) {
     info.innerHTML = `<div class="bad"><b>No safe route</b>: ${esc(r && r.reason ? r.reason : "unknown")}. Shelter in place and call 911.</div>`;
+    requestRender();
     return;
   }
   const pts = pathPoints(r.path);
@@ -1480,10 +1794,11 @@ function drawSelected(level, x, y, r) {
   const smokeNote = r.max_smoke > 0.35 ? `<div class="bad">Route passes through smoke. Stay low.</div>` : "";
   const items = (r.instructions || []).map((s) => `<li>${esc(s)}</li>`).join("");
   info.innerHTML = `<div class="good"><b>${esc(r.distance_m)} m</b> walking to <b>${esc(r.exit)}</b></div>${smokeNote}<ol>${items}</ol>`;
+  requestRender();
 }
 function drawAllLines(routes) {
   clearGroup(allRoutesGroup);
-  if (!showAll || !routes) return;
+  if (!showAll || !routes) { requestRender(); return; }
   const pos = [];
   for (const r of routes) {
     if (!r.reachable || !r.path || r.path.length < 2) continue;
@@ -1494,10 +1809,12 @@ function drawAllLines(routes) {
       pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     }
   }
-  if (!pos.length) return;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  allRoutesGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f81f7 })));
+  if (pos.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    allRoutesGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f81f7 })));
+  }
+  requestRender();
 }
 function currentLoc() {
   return abStart || lastStart;
@@ -1566,6 +1883,7 @@ function clearAB() {
   if (!had) return;
   clearGroup(routeGroup);
   $("routeInfo").innerHTML = "";
+  requestRender();
   if (lastStart) enqueue(() => refreshSelected()).catch((e) => showToast(e.message));
 }
 async function armAB(level, x, y) {
@@ -1579,6 +1897,7 @@ async function armAB(level, x, y) {
     routeGroup.add(start);
     $("routeInfo").innerHTML = `<div class="k">Start set. Click the destination.</div>`;
     syncExitBtn();
+    requestRender();
     return;
   }
   abEnd = { level, x, y };
@@ -1694,11 +2013,15 @@ $("btnFire").onclick = () => {
     await afterFireChange();
   }).catch((e) => showToast(e.message));
 };
-$("btnIgnite").onclick = () => {
-  ignite = !ignite;
+function setIgnite(on) {
+  ignite = on;
   $("btnIgnite").classList.toggle("on", ignite);
+  $("btnEmbedIgnite").classList.toggle("on", ignite);
   renderer.domElement.style.cursor = ignite ? "crosshair" : "";
-};
+}
+$("btnIgnite").onclick = () => setIgnite(!ignite);
+$("btnEmbedIgnite").onclick = () => setIgnite(!ignite);
+$("btnEmbedReset").onclick = () => $("btnReset").click();
 function setFireMode(mode) {
   enqueue(async () => {
     await post("/api/fire/mode", { mode });
@@ -1729,6 +2052,13 @@ $("btnPlay").onclick = () => {
   $("btnPlay").classList.add("on");
   playLoop(token);
 };
+if (EMBED) {
+  const bar = $("embedFire");
+  bar.insertBefore($("btnPlay"), $("btnEmbedReset"));
+  bar.insertBefore($("btnStep"), $("btnPlay"));
+  bar.appendChild($("floorSel").closest(".row"));
+  bar.appendChild($("gap").closest(".row"));
+}
 $("gap").oninput = (e) => {
   gap = parseFloat(e.target.value);
   layoutFloors();
@@ -1764,6 +2094,7 @@ $("btnAll").onclick = () => {
   if (!showAll) {
     cachedAll = null;
     clearGroup(allRoutesGroup);
+    requestRender();
     return;
   }
   enqueue(() => refreshAll()).catch((e) => showToast(e.message));
@@ -1818,33 +2149,128 @@ async function boot() {
     $("warn").textContent = building.warnings.join("\n");
   }
   buildBuilding();
+  if (EMBED && pendingPose) applyEmbedPose(pendingPose);
+  if (EMBED && embedPath) drawEmbedRoute(embedPath);
   const wallNote = levels.map((lv) => "F" + lv + ":" + (floorGroups.get(lv)?.userData.wallInstances || 0)).join(" ");
   console.info("wall instances (" + (displayGrid ? "display" : "solid") + ") " + wallNote);
   applyState(await api("/api/state"));
+  lastPollAt = performance.now();
+  startStatePoll();
 }
 
-function animate() {
-  requestAnimationFrame(animate);
-  const t = performance.now() / 1000;
-  for (const hm of hazardMeshes.values()) hm.fire.material.opacity = 0.7 + 0.25 * Math.sin(t * 6);
-  if (grid) {
-    const far = camera.position.distanceTo(controls.target) > labelFarLimit();
-    if (far !== labelsFar) {
-      labelsFar = far;
-      applyLabelVisibility();
-      labelDomDirty = true;
+let embedTap = 0, embedTapX = 0, embedTapY = 0, embedDownX = 0, embedDownY = 0, embedPrev = performance.now();
+let embedUser = false;
+controls.addEventListener("start", () => {
+  embedUser = true;
+  controlUntil = Infinity;
+  requestRender();
+});
+controls.addEventListener("end", () => {
+  embedUser = false;
+  controlUntil = performance.now() + 1200;
+  applyLabelVisibility();
+  labelVisAt = performance.now();
+  requestRender();
+});
+controls.addEventListener("change", () => {
+  if (EMBED && embedUser) embedFollow = false;
+  if (!inFrame) requestRender();
+});
+renderer.domElement.addEventListener("wheel", () => {
+  if (EMBED) embedFollow = false;
+  controlUntil = performance.now() + 1200;
+  requestRender();
+}, { passive: true });
+if (EMBED) {
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    embedDownX = e.clientX;
+    embedDownY = e.clientY;
+  });
+  renderer.domElement.addEventListener("pointerup", (e) => {
+    if (Math.hypot(e.clientX - embedDownX, e.clientY - embedDownY) > 10) { embedTap = 0; return; }
+    const now = performance.now();
+    if (now - embedTap < 340 && Math.hypot(e.clientX - embedTapX, e.clientY - embedTapY) < 30) {
+      embedFollow = true;
+      embedTap = 0;
+    } else {
+      embedTap = now;
+      embedTapX = e.clientX;
+      embedTapY = e.clientY;
     }
-  }
-  controls.update();
-  renderer.render(scene, camera);
-  const showLabels = $("btnLabels").classList.contains("on") && !labelsFar;
-  const showMarks = ghostGroup.children.length > 0;
-  if (showLabels || showMarks || labelDomDirty) {
-    labelRenderer.render(scene, camera);
-    if (!showLabels && !showMarks) labelDomDirty = false;
-  }
+  });
+  window.addEventListener("message", onEmbedMessage);
+  document.addEventListener("message", onEmbedMessage);
 }
-animate();
+function pulseFire(now) {
+  const base = 0.7 + 0.25 * Math.sin(now * 0.006);
+  let any = false;
+  for (let i = 0; i < hazardList.length; i++) {
+    const hm = hazardList[i];
+    if (hm.fire.count <= 0) continue;
+    any = true;
+    const mul = hm.fire.material.userData.embedGhost ?? 1;
+    hm.fire.material.opacity = base * mul;
+  }
+  return any;
+}
+function requestRender() {
+  renderDirty = true;
+  if (document.visibilityState === "hidden") return;
+  if (!raf) raf = requestAnimationFrame(animate);
+}
+function animate() {
+  raf = 0;
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - embedPrev) / 1000);
+  embedPrev = now;
+  const pulsing = pulseFire(now);
+  const follow = EMBED ? tickEmbed(now, dt) : false;
+  inFrame = true;
+  const camMoved = controls.update();
+  inFrame = false;
+  const damping = now < controlUntil;
+  if (camMoved || pulsing || follow || renderDirty) maybeUpdateLabels(now);
+  if (renderDirty || camMoved || pulsing || follow || labelDomDirty) {
+    renderer.render(scene, camera);
+    if (labelDomDirty || labelsShowing > 0) {
+      labelRenderer.render(scene, camera);
+      if (labelsShowing === 0) labelDomDirty = false;
+    }
+    renderDirty = false;
+  }
+  if (pulsing || follow || (damping && camMoved)) requestRender();
+}
+async function pollStateOnce() {
+  if (document.visibilityState === "hidden" || statePollBusy) return;
+  const now = performance.now();
+  if (now - lastPollAt < 1900) return;
+  statePollBusy = true;
+  lastPollAt = now;
+  try { applyState(await api("/api/state", { cache: "no-store" })); }
+  catch (e) { /* keep the last frame */ }
+  finally { statePollBusy = false; }
+}
+function startStatePoll() {
+  if (statePollTimer || document.visibilityState === "hidden") return;
+  statePollTimer = setInterval(pollStateOnce, 2000);
+}
+function stopStatePoll() {
+  if (!statePollTimer) return;
+  clearInterval(statePollTimer);
+  statePollTimer = 0;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    stopStatePoll();
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+  } else {
+    lastPollAt = 0;
+    pollStateOnce();
+    startStatePoll();
+    requestRender();
+  }
+});
+requestRender();
 boot().catch((e) => { $("bname").textContent = "Failed to load: " + e.message; console.error(e); });
 </script>
 <script src="nav.js" defer></script>

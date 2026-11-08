@@ -18,6 +18,8 @@ WALL_WEIGHT = 0.02
 STAIR_MISS_WEIGHT = 0.05
 STAIR_REACH_M = 5.0
 VISION_SIGMA_M = 3.0
+VPS_SIGMA_M = 1.5
+VPS_MIN_CONF = 0.5
 UNDERFLOW = 1e-300
 
 
@@ -111,6 +113,39 @@ class ParticleFilter:
         if applied:
             self.source = "vision"
         self._after_weights()
+
+    def observe_vps(self, pose):
+        """Strong camera fix. Sets the floor. Weights are exp(-d^2 / (2 * 1.5^2))."""
+        if not isinstance(pose, dict):
+            return False
+        try:
+            level = int(pose.get("level"))
+            x = float(pose.get("x"))
+            y = float(pose.get("y"))
+            conf = float(pose.get("confidence"))
+        except (TypeError, ValueError):
+            return False
+        if conf < VPS_MIN_CONF or not math.isfinite(conf) or not math.isfinite(x) or not math.isfinite(y):
+            return False
+        try:
+            mfi = self.grid.level_index[level]
+        except KeyError:
+            return False
+        self._capture()
+        self.fi = np.full(self.N, int(mfi), dtype=np.int32)
+        d2 = (self.x - x) ** 2 + (self.y - y) ** 2
+        like = np.exp(-d2 / (2.0 * VPS_SIGMA_M ** 2))
+        self.w *= like
+        self.source = "vps"
+        peak = float(np.max(like)) if like.size else 0.0
+        mass = float(np.nansum(self.w))
+        if (not np.isfinite(self.w).all()) or mass <= UNDERFLOW or peak < 1e-6:
+            self._last_fi = int(mfi)
+            self._last_x = float(x)
+            self._last_y = float(y)
+            self.w[:] = 0.0
+        self._after_weights()
+        return True
 
     def pose(self):
         level, x, y, spread, conf, _fi = self._estimate()
@@ -493,6 +528,15 @@ def make_router(get_world, lock, seed=None):
     ):
         jpeg = image.file.read()
         now = time.monotonic()
+        vps_pose = _vps_locate(jpeg)
+        if vps_pose is not None:
+            with gate:
+                pf = require(str(session), now)["pf"]
+                _ = heading_deg
+                if pf.observe_vps(vps_pose):
+                    out = pf.pose()
+                    out["seen"] = []
+                    return out
         try:
             from . import vision
         except ImportError:
@@ -531,6 +575,30 @@ def make_router(get_world, lock, seed=None):
             return pf.pose()
 
     return router
+
+
+def _vps_locate(jpeg):
+    """Camera pose from Builder AL, or None when VPS is missing or too weak."""
+    try:
+        from . import vps
+    except ImportError:
+        return None
+    locate = getattr(vps, "vps_locate", None)
+    if locate is None:
+        return None
+    try:
+        pose = locate(jpeg)
+    except Exception:
+        return None
+    if not isinstance(pose, dict):
+        return None
+    try:
+        conf = float(pose.get("confidence"))
+    except (TypeError, ValueError):
+        return None
+    if conf < VPS_MIN_CONF or not math.isfinite(conf):
+        return None
+    return pose
 
 
 def _read_frame(vision, jpeg, model):
