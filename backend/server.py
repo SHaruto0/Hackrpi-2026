@@ -229,6 +229,30 @@ def route(level: int = Query(...), x: float = Query(...), y: float = Query(...))
         return world.field.route_from(_level_index(level), x, y)
 
 
+@app.get("/api/route_to")
+def route_to(level: int = Query(...), x: float = Query(...), y: float = Query(...),
+             to_level: int = Query(None), to_x: float = Query(None), to_y: float = Query(None),
+             to_room: str = Query(None)):
+    """Safest path from a point to another point or room anywhere in the building."""
+    with lock:
+        g = world.grid
+        if to_room:
+            matches = [r for r in g.rooms if r["label"].split(" ")[0].lower() == to_room.lower()]
+            matches.sort(key=lambda r: "lower tier" in r["label"])      # the room itself before its lower tier
+            info = g.room_by_id.get(to_room) or (matches[0] if matches else None)
+            if info is None:
+                raise HTTPException(404, f"Unknown room {to_room}")
+            gfi, cell = best_room_cell(world.field, info)
+            if cell is None:
+                raise HTTPException(400, f"Room {to_room} has no walkable floor")
+            gx, gy = g.center_of(*cell)
+        elif None not in (to_level, to_x, to_y):
+            gfi, gx, gy = _level_index(to_level), to_x, to_y
+        else:
+            raise HTTPException(400, "Send to_room, or to_level + to_x + to_y")
+        return world.field.route_between(_level_index(level), x, y, gfi, gx, gy)
+
+
 @app.get("/api/routes/all")
 def routes_all():
     """Evacuation route from the center of every room (skips stairs/elevators)."""

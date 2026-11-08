@@ -2264,7 +2264,7 @@ function onKeyUp(e) {
   if (draft) render();
 }
 
-const AI_OP_NAMES = new Set(["add_door", "set_door", "set_space", "delete", "remove", "add_wall", "move_vertical"]);
+const AI_OP_NAMES = new Set(["add_door", "set_door", "move_door", "set_space", "add_space", "delete", "remove", "add_wall", "set_wall", "move_vertical", "add_vertical", "set_vertical"]);
 function aiOpKey(v) { return String(v || "").toLowerCase().replace(/[\s-]+/g, "_"); }
 function isAiOpName(v) { return AI_OP_NAMES.has(aiOpKey(v)); }
 function opName(op) {
@@ -2290,11 +2290,45 @@ function opId(op, bag) {
   }
   return "";
 }
+function opLevel(op) {
+  if (op.level != null && op.level !== "") return +op.level;
+  for (const n of [op.fields, op.set, op.patch]) {
+    if (n && n.level != null && n.level !== "") return +n.level;
+  }
+  return null;
+}
 function aiFloor(op) {
-  if (op.level == null || op.level === "") return current();
-  const fl = doc.floors.find((f) => f.level === +op.level);
-  if (!fl) throw new Error("No floor " + op.level);
+  const lv = opLevel(op);
+  if (lv == null) return current();
+  if (!Number.isFinite(lv)) throw new Error("Bad floor");
+  const fl = doc.floors.find((f) => f.level === lv);
+  if (!fl) throw new Error("No floor " + lv);
   return fl;
+}
+function parseFloorList(v) {
+  const list = Array.isArray(v) ? v : (v == null || v === "" ? [] : String(v).split(","));
+  const floors = [];
+  for (const item of list) {
+    const n = +item;
+    if (!Number.isInteger(n)) throw new Error("Bad floor " + item);
+    if (!doc.floors.some((f) => f.level === n)) throw new Error("No floor " + n);
+    if (!floors.includes(n)) floors.push(n);
+  }
+  return floors;
+}
+function parseVertPositions(pos) {
+  if (pos == null) return {};
+  if (typeof pos !== "object" || Array.isArray(pos)) throw new Error("Bad stair positions");
+  const out = {};
+  for (const [k, p] of Object.entries(pos)) {
+    const lv = +k;
+    if (!Number.isInteger(lv)) throw new Error("Bad floor " + k);
+    if (!doc.floors.some((f) => f.level === lv)) throw new Error("No floor " + lv);
+    const q = asPoint(p);
+    if (!q) throw new Error("Bad stair point on floor " + lv);
+    out[String(lv)] = q;
+  }
+  return out;
 }
 function asConnects(v) {
   if (Array.isArray(v)) return v.map((x) => String(x).trim()).filter(Boolean);
@@ -2326,10 +2360,15 @@ function applyAiOp(op) {
   const id = opId(op, bag);
   if (name === "add_door") return addAiDoor(op, bag, id);
   if (name === "set_door") return setAiDoor(op, bag, id);
+  if (name === "move_door") return moveAiDoor(op, bag, id);
   if (name === "set_space") return setAiSpace(op, bag, id);
+  if (name === "add_space") return addAiSpace(op, bag, id);
   if (name === "delete" || name === "remove") return deleteAi(op, id);
   if (name === "add_wall") return addAiWall(op, bag, id);
+  if (name === "set_wall") return setAiWall(op, bag, id);
   if (name === "move_vertical") return moveAiVertical(op, bag, id);
+  if (name === "add_vertical") return addAiVertical(op, bag, id);
+  if (name === "set_vertical") return setAiVertical(op, bag, id);
   throw new Error("Unknown edit " + (name || "op"));
 }
 function addAiDoor(op, bag, id) {
@@ -2354,6 +2393,7 @@ function addAiDoor(op, bag, id) {
     if (hit) door.axis = hit.axis.slice();
   }
   fl.doors.push(door);
+  return fl.level;
 }
 function setAiDoor(op, bag, id) {
   if (!id) throw new Error("Door id missing");
@@ -2362,7 +2402,7 @@ function setAiDoor(op, bag, id) {
     const d = byId(fl.doors, id);
     if (d) hits.push(d);
   }
-  if (op.level != null && op.level !== "") {
+  if (opLevel(op) != null) {
     const fl = aiFloor(op);
     hits = hits.filter((d) => fl.doors.includes(d));
   }
@@ -2378,6 +2418,25 @@ function setAiDoor(op, bag, id) {
   if (bag.axis === null) d.axis = null;
   const axis = asAxis(bag.axis);
   if (axis) d.axis = axis;
+  return doc.floors.find((fl) => fl.doors.includes(d)).level;
+}
+function moveAiDoor(op, bag, id) {
+  if (!id) throw new Error("Door id missing");
+  const x = +bag.x, y = +bag.y;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("Door needs x and y");
+  let hits = [];
+  for (const fl of doc.floors) {
+    const d = byId(fl.doors, id);
+    if (d) hits.push({ fl, d });
+  }
+  if (opLevel(op) != null) {
+    const fl = aiFloor(op);
+    hits = hits.filter((h) => h.fl === fl);
+  }
+  if (!hits.length) throw new Error("No door " + id);
+  hits[0].d.x = x;
+  hits[0].d.y = y;
+  return hits[0].fl.level;
 }
 function setAiSpace(op, bag, id) {
   if (!id) throw new Error("Room id missing");
@@ -2386,7 +2445,7 @@ function setAiSpace(op, bag, id) {
     const s = byId(fl.spaces, id);
     if (s) hits.push(s);
   }
-  if (op.level != null && op.level !== "") {
+  if (opLevel(op) != null) {
     const fl = aiFloor(op);
     hits = hits.filter((s) => fl.spaces.includes(s));
   }
@@ -2398,37 +2457,65 @@ function setAiSpace(op, bag, id) {
   if (bag.confidence != null && bag.confidence !== "") s.confidence = clamp01(bag.confidence, s.confidence);
   const poly = asPoly(bag.polygon);
   if (poly && poly.length >= 3) s.polygon = poly;
+  return doc.floors.find((fl) => fl.spaces.includes(s)).level;
+}
+function addAiSpace(op, bag, id) {
+  const fl = aiFloor(op);
+  const poly = asPoly(bag.polygon);
+  if (!poly || poly.length < 3) throw new Error("Room needs a polygon");
+  let sid = id;
+  if (!sid || allIds().has(sid)) sid = allocId("F" + fl.level + "-R");
+  op.id = sid;
+  const type = typeof bag.type === "string" && bag.type ? bag.type : "unknown";
+  const label = typeof bag.label === "string" && bag.label.trim() ? bag.label.trim() : sid;
+  fl.spaces.push({
+    id: sid, label, type, polygon: poly,
+    multi_floor: !!bag.multi_floor, confidence: clamp01(bag.confidence, 1),
+  });
+  return fl.level;
 }
 function deleteAi(op, id) {
   const kind = String(op.kind || op.target || "").toLowerCase();
   if (!id && kind !== "outline") throw new Error("Delete needs an id");
-  const limit = op.level != null && op.level !== "" ? aiFloor(op) : null;
+  const limit = opLevel(op) != null ? aiFloor(op) : null;
   const floors = limit ? [limit] : doc.floors;
   let n = 0;
+  let lv = limit ? limit.level : null;
   const want = (k) => !kind || kind === k;
   if (want("wall")) for (const fl of floors) {
+    if (lv == null && fl.walls.some((w) => w.id === id)) lv = fl.level;
     const before = fl.walls.length;
     fl.walls = fl.walls.filter((w) => w.id !== id);
     n += before - fl.walls.length;
   }
   if (want("space") || want("room")) for (const fl of floors) {
     if (!fl.spaces.some((s) => s.id === id)) continue;
+    if (lv == null) lv = fl.level;
     fl.spaces = fl.spaces.filter((s) => s.id !== id);
     for (const d of fl.doors) d.connects = (d.connects || []).filter((c) => c !== id);
     n += 1;
   }
   if (want("door")) for (const fl of floors) {
+    if (lv == null && fl.doors.some((d) => d.id === id)) lv = fl.level;
     const before = fl.doors.length;
     fl.doors = fl.doors.filter((d) => d.id !== id);
     n += before - fl.doors.length;
   }
   if (want("vertical") || want("stairs") || want("elevator") || want("ramp")) {
+    const v = byId(doc.vertical_connections, id);
+    if (v && lv == null) lv = v.floors && v.floors.length ? v.floors[0] : floorLevel;
     const before = doc.vertical_connections.length;
-    doc.vertical_connections = doc.vertical_connections.filter((v) => v.id !== id);
+    doc.vertical_connections = doc.vertical_connections.filter((item) => item.id !== id);
     n += before - doc.vertical_connections.length;
   }
-  if (kind === "outline") { (limit || current()).outline = []; n += 1; }
+  if (kind === "outline") {
+    const fl = limit || current();
+    fl.outline = [];
+    if (lv == null) lv = fl.level;
+    n += 1;
+  }
   if (!n) throw new Error("Nothing to delete" + (id ? " " + id : ""));
+  return lv == null ? floorLevel : lv;
 }
 function addAiWall(op, bag, id) {
   const fl = aiFloor(op);
@@ -2439,6 +2526,32 @@ function addAiWall(op, bag, id) {
   if (!wallId || allIds().has(wallId)) wallId = allocId("F" + fl.level + "-W");
   op.id = wallId;
   fl.walls.push({ id: wallId, x1, y1, x2, y2, exterior: !!bag.exterior, confidence: clamp01(bag.confidence, 1) });
+  return fl.level;
+}
+function setAiWall(op, bag, id) {
+  if (!id) throw new Error("Wall id missing");
+  let hits = [];
+  for (const fl of doc.floors) {
+    const w = byId(fl.walls, id);
+    if (w) hits.push({ fl, w });
+  }
+  if (opLevel(op) != null) {
+    const fl = aiFloor(op);
+    hits = hits.filter((h) => h.fl === fl);
+  }
+  if (!hits.length) throw new Error("No wall " + id);
+  const w = hits[0].w;
+  const next = {
+    x1: bag.x1 != null && bag.x1 !== "" ? +bag.x1 : w.x1,
+    y1: bag.y1 != null && bag.y1 !== "" ? +bag.y1 : w.y1,
+    x2: bag.x2 != null && bag.x2 !== "" ? +bag.x2 : w.x2,
+    y2: bag.y2 != null && bag.y2 !== "" ? +bag.y2 : w.y2,
+  };
+  if (![next.x1, next.y1, next.x2, next.y2].every(Number.isFinite)) throw new Error("Wall needs numbers");
+  if (Math.hypot(next.x2 - next.x1, next.y2 - next.y1) < 0.05) throw new Error("That wall is too short.");
+  w.x1 = next.x1; w.y1 = next.y1; w.x2 = next.x2; w.y2 = next.y2;
+  if (bag.exterior != null) w.exterior = !!bag.exterior;
+  return hits[0].fl.level;
 }
 function moveAiVertical(op, bag, id) {
   if (!id) throw new Error("Stair id missing");
@@ -2454,25 +2567,117 @@ function moveAiVertical(op, bag, id) {
       v.positions[String(parseInt(k, 10))] = q;
       n += 1;
     }
-    if (n) return;
+    if (n) {
+      const first = Object.keys(pos).map((k) => +k).find((k) => Number.isInteger(k));
+      return Number.isInteger(first) ? first : floorLevel;
+    }
   }
-  const lv = op.level != null && op.level !== "" ? +op.level : floorLevel;
+  const lv = opLevel(op) != null ? opLevel(op) : floorLevel;
   const q = asPoint([bag.x, bag.y]);
   if (!q) throw new Error("Stair needs a point");
   v.positions[String(lv)] = q;
+  return lv;
+}
+function addAiVertical(op, bag, id) {
+  if (bag.type != null && bag.type !== "" && !VERT_TYPES.includes(String(bag.type))) throw new Error("Bad stair type");
+  const type = VERT_TYPES.includes(String(bag.type)) ? String(bag.type) : "stairs";
+  const listed = parseFloorList(bag.floors);
+  const positions = parseVertPositions(bag.positions);
+  const order = listed.length ? listed.slice() : Object.keys(positions).map((k) => +k);
+  for (const k of Object.keys(positions)) if (!order.includes(+k)) order.push(+k);
+  if (!order.length) throw new Error("Stairs need floors");
+  if (!Object.keys(positions).length) throw new Error("Stairs need positions");
+  let vid = id;
+  if (!vid || allIds().has(vid)) vid = allocId("V");
+  op.id = vid;
+  const anchor = positions[String(order[0])] || positions[Object.keys(positions)[0]];
+  const name = typeof bag.name === "string" && bag.name.trim() ? bag.name.trim() : vid;
+  doc.vertical_connections.push({
+    id: vid, name, type, x: anchor[0], y: anchor[1],
+    floors: order.slice().sort((a, b) => a - b), positions, confidence: clamp01(bag.confidence, 1),
+  });
+  return order[0];
+}
+function setAiVertical(op, bag, id) {
+  if (!id) throw new Error("Stair id missing");
+  const v = byId(doc.vertical_connections, id);
+  if (!v) throw new Error("No stair " + id);
+  if (typeof bag.name === "string" && bag.name.trim()) v.name = bag.name.trim();
+  if (bag.type != null && bag.type !== "") {
+    if (!VERT_TYPES.includes(String(bag.type))) throw new Error("Bad stair type");
+    v.type = String(bag.type);
+  }
+  let view = v.floors && v.floors.length ? v.floors[0] : floorLevel;
+  if (bag.floors != null) {
+    const floors = parseFloorList(bag.floors);
+    if (!floors.length) throw new Error("Stairs need floors");
+    v.floors = floors.slice().sort((a, b) => a - b);
+    view = floors[0];
+  }
+  if (bag.positions != null) {
+    const pos = parseVertPositions(bag.positions);
+    v.positions = v.positions || {};
+    const keys = Object.keys(pos);
+    if (!keys.length) throw new Error("Stairs need positions");
+    for (const k of keys) {
+      v.positions[k] = pos[k];
+      if (!v.floors.includes(+k)) v.floors.push(+k);
+    }
+    v.floors.sort((a, b) => a - b);
+    view = +keys[0];
+  }
+  const anchor = v.positions && v.positions[String(v.floors[0])];
+  if (anchor) { v.x = anchor[0]; v.y = anchor[1]; }
+  return view;
+}
+function vertWord(type) {
+  if (type === "elevator") return "elevator";
+  if (type === "ramp") return "ramp";
+  return "stairs";
+}
+function vertEnds(bag) {
+  const positions = bag.positions && typeof bag.positions === "object" && !Array.isArray(bag.positions) ? bag.positions : {};
+  let floors = [];
+  if (Array.isArray(bag.floors) && bag.floors.length) floors = bag.floors.map((n) => +n).filter((n) => Number.isInteger(n));
+  else floors = Object.keys(positions).map((k) => +k).filter((n) => Number.isInteger(n));
+  const bits = [];
+  for (const lv of floors) {
+    const p = asPoint(positions[String(lv)] != null ? positions[String(lv)] : positions[lv]);
+    if (!p) { bits.push("F" + lv); continue; }
+    const fl = doc && doc.floors.find((f) => f.level === lv);
+    const s = fl && (spaceAt(fl, p[0], p[1]) || nearestSpace(fl, p[0], p[1]));
+    const label = s ? String(s.label || s.id) : "";
+    bits.push(label ? label + " (F" + lv + ")" : "F" + lv);
+  }
+  return bits;
 }
 function opLine(op) {
-  if (typeof op.summary === "string" && op.summary.trim()) return op.summary.trim();
-  if (typeof op.text === "string" && op.text.trim()) return op.text.trim();
+  const name = opName(op);
   const bag = opBag(op);
   const id = opId(op, bag);
-  const extra = [];
-  if (bag.exterior_exit === true) extra.push("exit");
-  if (bag.exterior_exit === false) extra.push("not exit");
-  if (typeof bag.label === "string" && bag.label) extra.push(bag.label);
-  else if (typeof bag.type === "string" && bag.type) extra.push(bag.type);
-  const name = opName(op) || "change";
-  return name + (id ? " " + id : "") + (extra.length ? ": " + extra.join(", ") : "");
+  const lv = opLevel(op);
+  const flBit = lv != null && Number.isFinite(lv) ? " (F" + lv + ")" : "";
+  if (name === "add_vertical" || name === "set_vertical" || name === "move_vertical") {
+    const found = id && doc && byId(doc.vertical_connections, id);
+    const word = vertWord(bag.type || (found && found.type));
+    const verb = name === "add_vertical" ? "Add" : name === "move_vertical" ? "Move" : "Set";
+    const bits = vertEnds(bag);
+    if (bits.length >= 2) return verb + " " + word + " " + bits.join(" -> ");
+    const who = bag.name || id || "";
+    if (bits.length === 1) return verb + " " + word + (who ? " " + who : "") + " " + bits[0];
+    return verb + " " + word + (who ? " " + who : "");
+  }
+  if (name === "add_space") return "Add room " + (bag.label || id || "room") + flBit;
+  if (name === "set_space") return "Set room " + (bag.label || id || "") + flBit;
+  if (name === "add_door") return "Add door" + (bag.exterior_exit ? " exit" : "") + flBit;
+  if (name === "set_door") return "Set door " + (id || "") + flBit;
+  if (name === "move_door") return "Move door " + (id || "") + flBit;
+  if (name === "add_wall") return "Add wall" + flBit;
+  if (name === "set_wall") return "Set wall " + (id || "") + flBit;
+  if (name === "delete" || name === "remove") return "Delete " + (String(op.kind || op.target || "item")) + (id ? " " + id : "") + flBit;
+  if (typeof op.summary === "string" && op.summary.trim()) return op.summary.trim();
+  if (typeof op.text === "string" && op.text.trim()) return op.text.trim();
+  return (name || "change") + (id ? " " + id : "");
 }
 function proposalOps(data) {
   if (Array.isArray(data)) return data;
@@ -2642,9 +2847,12 @@ function applyCard(msg) {
   if (history.length > 12) history.shift();
   future = [];
   const failed = [];
+  let viewFloor = null;
   for (const op of chosen) {
-    try { applyAiOp(op); }
-    catch (err) { failed.push(err.message || String(err)); }
+    try {
+      const lv = applyAiOp(op);
+      if (viewFloor == null && Number.isFinite(lv)) viewFloor = lv;
+    } catch (err) { failed.push(err.message || String(err)); }
   }
   if (failed.length === chosen.length) {
     history.pop();
@@ -2658,6 +2866,7 @@ function applyCard(msg) {
   msg.snap = snap;
   msg.applied = true;
   saveState = "dirty";
+  if (viewFloor != null && doc.floors.some((f) => f.level === viewFloor)) floorLevel = viewFloor;
   if (!doc.floors.some((f) => f.level === floorLevel)) floorLevel = doc.floors[0].level;
   if (sel && !selectionAlive()) sel = null;
   buildInspector();
@@ -2693,13 +2902,46 @@ function drawAiHighlights(fl) {
     const name = opName(op);
     const bag = opBag(op);
     const id = op.id || opId(op, bag);
-    const lv = op.level != null && op.level !== "" ? +op.level : fl.level;
-    if (name === "move_vertical") {
-      const v = id && byId(doc.vertical_connections, id);
-      if (!v || !v.floors.includes(fl.level)) continue;
+    const lv = opLevel(op) != null ? opLevel(op) : fl.level;
+    if (name === "move_vertical" || name === "add_vertical" || name === "set_vertical") {
       const spec = bag.positions && asPoint(bag.positions[String(fl.level)]);
-      const p = spec || (lv === fl.level && Number.isFinite(+bag.x) && Number.isFinite(+bag.y) ? [+bag.x, +bag.y] : vertPoint(v, fl.level));
+      const listed = Array.isArray(bag.floors) && bag.floors.some((n) => +n === fl.level);
+      const v = id && byId(doc.vertical_connections, id);
+      if (name === "move_vertical" && (!v || !v.floors.includes(fl.level))) continue;
+      if (name !== "move_vertical" && !spec && !listed) continue;
+      const p = spec || (lv === fl.level && Number.isFinite(+bag.x) && Number.isFinite(+bag.y) ? [+bag.x, +bag.y] : (v ? vertPoint(v, fl.level) : null));
+      if (!p) continue;
       drawDiamond(p[0], p[1], Math.max(0.45, 9 / view.zoom), "rgba(188,140,255,0.35)", "#bc8cff");
+      continue;
+    }
+    if (name === "add_space") {
+      if (lv !== fl.level) continue;
+      const poly = asPoly(bag.polygon);
+      if (poly && poly.length >= 3) { tracePoly(poly, true); ctx.fill(); ctx.stroke(); }
+      continue;
+    }
+    if (name === "move_door") {
+      const d = id && byId(fl.doors, id);
+      if (!d && lv !== fl.level) continue;
+      const x = Number.isFinite(+bag.x) ? +bag.x : (d && d.x);
+      const y = Number.isFinite(+bag.y) ? +bag.y : (d && d.y);
+      if (Number.isFinite(x) && Number.isFinite(y) && (d || lv === fl.level)) {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max((d ? d.width : 0.9) / 2, 0.35), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      continue;
+    }
+    if (name === "set_wall") {
+      const w = id && byId(fl.walls, id);
+      if (!w) continue;
+      const x1 = bag.x1 != null && bag.x1 !== "" ? +bag.x1 : w.x1;
+      const y1 = bag.y1 != null && bag.y1 !== "" ? +bag.y1 : w.y1;
+      const x2 = bag.x2 != null && bag.x2 !== "" ? +bag.x2 : w.x2;
+      const y2 = bag.y2 != null && bag.y2 !== "" ? +bag.y2 : w.y2;
+      if ([x1, y1, x2, y2].every(Number.isFinite)) {
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
       continue;
     }
     if (lv !== fl.level) continue;

@@ -16,9 +16,11 @@
   h1 { font-size:15px; margin:0 0 2px; } .sub { color:var(--muted); margin-bottom:10px; }
   .row { display:flex; gap:6px; align-items:center; margin:6px 0; flex-wrap:wrap; }
   label { color:var(--muted); font-size:12px; }
-  select, button, input[type=range] { font:inherit; }
-  select, button { background:#21262d; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  select, button, input[type=range], input[type=text] { font:inherit; }
+  select, button, input[type=text] { background:#21262d; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  #goRoom { flex:1; min-width:0; }
   button { cursor:pointer; } button:hover { border-color:#8b949e; }
+  button:disabled { opacity:.45; cursor:default; } button:disabled:hover { border-color:var(--line); }
   button.primary { background:#da3633; border-color:#da3633; }
   button.on { background:#1f6feb; border-color:#1f6feb; }
   #btnIgnite.on { background:var(--fire); border-color:var(--fire); color:#fff; }
@@ -90,6 +92,12 @@
 
   <div class="sec">
     <div class="k">Click a walkable spot for the escape route. It reroutes live as the fire spreads. Click to start fire places a fire where you click.</div>
+    <div class="row">
+      <button id="btnAB">Route A to B</button>
+      <button id="btnExit" disabled title="Click a spot first">Nearest exit</button>
+      <input id="goRoom" type="text" placeholder="Go to room" autocomplete="off">
+      <button id="btnGoRoom">Go</button>
+    </div>
     <div id="routeInfo" style="margin-top:6px"></div>
   </div>
   <div class="sec" id="warnSec" style="display:none"><div class="k">Map warnings</div><div id="warn"></div></div>
@@ -184,6 +192,7 @@ const HALL_TIERS = 6;
 const HALL_RING = 36;
 
 let lastStart = null, cachedRoute = null, cachedAll = null;
+let abOn = false, abStart = null, abEnd = null, abRoom = "";
 let playing = false, playToken = 0, playTick = 0, showAll = false, ignite = false, fireMode = "simulate";
 let lastState = null, labelsFar = false, labelDomDirty = true;
 let chain = Promise.resolve();
@@ -1490,13 +1499,117 @@ function drawAllLines(routes) {
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   allRoutesGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f81f7 })));
 }
+function currentLoc() {
+  return abStart || lastStart;
+}
+function syncExitBtn() {
+  const ok = !!currentLoc();
+  const btn = $("btnExit");
+  btn.disabled = !ok;
+  btn.title = ok ? "" : "Click a spot first";
+}
 async function routeFrom(level, x, y) {
   lastStart = { level, x, y };
+  syncExitBtn();
   const r = await api(`/api/route?level=${level}&x=${x}&y=${y}`);
   cachedRoute = r;
   drawSelected(level, x, y, r);
 }
+function abActive() {
+  return !!(abStart && (abEnd || abRoom));
+}
+function markerSphere(color, radius) {
+  return new THREE.Mesh(new THREE.SphereGeometry(radius, 12, 8), new THREE.MeshBasicMaterial({ color }));
+}
+function drawAB(r) {
+  clearGroup(routeGroup);
+  const start = markerSphere(0x3fb950, 0.45);
+  start.position.set(abStart.x, levelY(abStart.level) + 0.45, abStart.y);
+  routeGroup.add(start);
+  const info = $("routeInfo");
+  const placeEnd = (pos) => {
+    const end = markerSphere(0x3b82f6, 0.5);
+    end.position.copy(pos);
+    routeGroup.add(end);
+  };
+  if (abEnd && (!r || !r.reachable)) {
+    placeEnd(new THREE.Vector3(abEnd.x, levelY(abEnd.level) + 0.45, abEnd.y));
+  }
+  if (!r || !r.reachable) {
+    info.innerHTML = `<div class="bad"><b>No route</b>: ${esc(r && r.reason ? r.reason : "unknown")}.</div>`;
+    return;
+  }
+  const pts = pathPoints(r.path);
+  drawTube(routeGroup, pts, 0x22d3ee, 0.22);
+  if (pts.length) placeEnd(pts[pts.length - 1]);
+  const items = (r.instructions || []).map((s) => `<li>${esc(s)}</li>`).join("");
+  info.innerHTML = `<div class="good"><b>${esc(r.distance_m)} m</b></div><ol>${items}</ol>`;
+}
+async function refreshAB() {
+  if (!abActive()) return;
+  let q = `/api/route_to?level=${abStart.level}&x=${abStart.x}&y=${abStart.y}`;
+  q += abRoom
+    ? `&to_room=${encodeURIComponent(abRoom)}`
+    : `&to_level=${abEnd.level}&to_x=${abEnd.x}&to_y=${abEnd.y}`;
+  const r = await api(q);
+  cachedRoute = r;
+  drawAB(r);
+}
+function clearAB() {
+  const had = abOn || abStart || abEnd || abRoom;
+  abOn = false;
+  abStart = null;
+  abEnd = null;
+  abRoom = "";
+  $("btnAB").classList.remove("on");
+  syncExitBtn();
+  if (!had) return;
+  clearGroup(routeGroup);
+  $("routeInfo").innerHTML = "";
+  if (lastStart) enqueue(() => refreshSelected()).catch((e) => showToast(e.message));
+}
+async function armAB(level, x, y) {
+  if (!abStart || abEnd || abRoom) {
+    abStart = { level, x, y };
+    abEnd = null;
+    abRoom = "";
+    clearGroup(routeGroup);
+    const start = markerSphere(0x3fb950, 0.45);
+    start.position.set(x, levelY(level) + 0.45, y);
+    routeGroup.add(start);
+    $("routeInfo").innerHTML = `<div class="k">Start set. Click the destination.</div>`;
+    syncExitBtn();
+    return;
+  }
+  abEnd = { level, x, y };
+  await refreshAB();
+}
+async function goToRoom() {
+  const num = $("goRoom").value.trim();
+  if (!num) return;
+  const start = abStart || lastStart;
+  if (!start) { showToast("Click a start point first"); return; }
+  abOn = true;
+  $("btnAB").classList.add("on");
+  abStart = { level: start.level, x: start.x, y: start.y };
+  abEnd = null;
+  abRoom = num;
+  syncExitBtn();
+  await refreshAB();
+}
+async function nearestExit() {
+  const loc = currentLoc();
+  if (!loc) return;
+  abOn = false;
+  abStart = null;
+  abEnd = null;
+  abRoom = "";
+  $("btnAB").classList.remove("on");
+  await routeFrom(loc.level, loc.x, loc.y);
+}
 async function refreshSelected() {
+  if (abActive()) { await refreshAB(); return; }
+  if (abOn && abStart) return;
   if (!lastStart) return;
   await routeFrom(lastStart.level, lastStart.x, lastStart.y);
 }
@@ -1526,7 +1639,9 @@ renderer.domElement.addEventListener("pointerup", (e) => {
   if (!spot) { showToast("That is a wall"); return; }
   const job = ignite
     ? () => placeFire(level, spot.x, spot.y)
-    : () => routeFrom(level, spot.x, spot.y);
+    : abOn
+      ? () => armAB(level, spot.x, spot.y)
+      : () => routeFrom(level, spot.x, spot.y);
   enqueue(job).catch((err) => showToast(err.message));
 });
 
@@ -1624,6 +1739,25 @@ $("btnLabels").onclick = (e) => {
   applyLabelVisibility();
   labelDomDirty = true;
 };
+$("btnAB").onclick = () => {
+  if (abOn) { clearAB(); return; }
+  abOn = true;
+  $("btnAB").classList.add("on");
+};
+$("btnExit").onclick = () => {
+  enqueue(() => nearestExit()).catch((e) => showToast(e.message));
+};
+$("btnGoRoom").onclick = () => {
+  enqueue(() => goToRoom()).catch((e) => showToast(e.message));
+};
+$("goRoom").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  enqueue(() => goToRoom()).catch((err) => showToast(err.message));
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") clearAB();
+});
 $("btnAll").onclick = () => {
   showAll = !showAll;
   $("btnAll").classList.toggle("on", showAll);

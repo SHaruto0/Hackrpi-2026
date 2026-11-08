@@ -1309,6 +1309,14 @@ def apply_overrides(building, path):
                 f["up"] = [-f["up"][0], -f["up"][1]] if rule.get("flip") else f["up"]
             f["goes"] = rule["goes"]; f["dir_source"] = "override"
             log.append(f"flight at {f['center']} goes {rule['goes']}")
+    for rule in ov.get("add_door", []):               # plain doorway (not an exit) to open a sealed room
+        fl = floors.get(rule.get("level"))
+        if fl:
+            x, y = rule["near"]
+            did = f"F{fl['level']}-H{len(fl['doors']) + 1}"
+            fl["doors"].append({"id": did, "x": x, "y": y, "width": rule.get("width", 1.2), "connects": [],
+                                "exterior_exit": False, "axis": rule.get("axis", [1.0, 0.0]), "confidence": 1.0})
+            log.append(f"added door {did} at ({x}, {y})")
     for rule in ov.get("add_exit", []):                # exits added by hand in the editor
         fl = floors.get(rule.get("level"))
         if not fl:
@@ -1358,6 +1366,9 @@ def apply_overrides(building, path):
             "floors": sorted(rule["floors"]), "x": xy[0], "y": xy[1],
             "positions": {str(lv): xy for lv in rule["floors"]}, "confidence": 1.0})
         log.append(f"added link {rule['id']} floors {rule['floors']} at {xy}")
+    if ov.get("remove_links"):                          # drop vertical connections by id
+        building["vertical_connections"] = [v for v in building["vertical_connections"] if v["id"] not in ov["remove_links"]]
+        log.append(f"removed links {ov['remove_links']}")
     for rule in ov.get("vertical_floors", []):          # e.g. a stair that does not reach every floor
         for v in building["vertical_connections"]:
             if v["id"] == rule["id"]:

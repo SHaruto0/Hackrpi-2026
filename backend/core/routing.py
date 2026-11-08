@@ -17,6 +17,7 @@ from scipy.sparse.csgraph import dijkstra
 SMOKE_PENALTY = 12.0
 NO_PRED = -9999
 
+HALL_COST_X = 3.0     # cost multiplier for walking through lecture hall seating
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
 
 
@@ -33,6 +34,9 @@ class RouteField:
 
         rows, cols, wts = [], [], []
         P = self.passable
+        # walking across a lecture hall (seating) is slow: routes go around halls unless they start/end in one
+        hall_ids = [r["index"] for r in g.rooms if r["type"] == "lecture_hall"]
+        slow = np.where(np.isin(g.room, hall_ids), HALL_COST_X, 1.0) if hall_ids else np.ones(g.room.shape)
         for dr, dc in DIRS:
             r0, r1 = max(0, -dr), R - max(0, dr)
             c0, c1 = max(0, -dc), C - max(0, dc)
@@ -46,7 +50,9 @@ class RouteField:
             sb = smoke[:, r0 + dr:r1 + dr, c0 + dc:c1 + dc][ok]
             rows.append(idx[:, r0:r1, c0:c1][ok])
             cols.append(idx[:, r0 + dr:r1 + dr, c0 + dc:c1 + dc][ok])
-            wts.append(step * (1.0 + SMOKE_PENALTY * (sa + sb) / 2.0))
+            ha = slow[:, r0:r1, c0:c1][ok]
+            hb = slow[:, r0 + dr:r1 + dr, c0 + dc:c1 + dc][ok]
+            wts.append(step * (1.0 + SMOKE_PENALTY * (sa + sb) / 2.0) * (ha + hb) / 2.0)
 
         self.link_names = {}
         for (fa, ra, ca), (fb, rb, cb), cost, v in g.links:
@@ -69,6 +75,7 @@ class RouteField:
             (np.concatenate(wts), (np.concatenate(rows), np.concatenate(cols))),
             shape=(n, n),
         ).tocsr()
+        self.graph = graph            # kept for point-to-point routes (route_between)
 
         sources = [g.flat(fi, r, c) for fi, r, c, _ in g.exits if P[fi, r, c]]
         self.exit_ids = {g.flat(fi, r, c): did for fi, r, c, did in g.exits}
@@ -82,6 +89,31 @@ class RouteField:
             self.pred = np.full(n, NO_PRED)
 
     # ------------------------------------------------------------------
+    def route_between(self, fi, x, y, gfi, gx, gy):
+        """Safest path from (fi, x, y) to any walkable goal (gfi, gx, gy): same costs as evacuation routes
+        (fire and blocked cells impassable, smoke expensive, stairs cost, no elevators)."""
+        g = self.grid
+        a = g.nearest_walkable(fi, x, y, max_dist=3.0, mask=self.passable[fi])
+        b = g.nearest_walkable(gfi, gx, gy, max_dist=3.0, mask=self.passable[gfi])
+        if a is None or b is None:
+            return {"reachable": False, "reason": "start or goal is not on a safe walkable area",
+                    "path": [], "distance_m": None, "instructions": []}
+        start, goal = g.flat(fi, *a), g.flat(gfi, *b)
+        dist, pred = dijkstra(self.graph, directed=True, indices=goal, return_predecessors=True)
+        if not math.isfinite(dist[start]):
+            return {"reachable": False, "reason": "no safe path between those points",
+                    "path": [], "distance_m": None, "instructions": []}
+        nodes = [start]
+        while nodes[-1] != goal and pred[nodes[-1]] != NO_PRED and len(nodes) < 1_000_000:
+            nodes.append(int(pred[nodes[-1]]))
+        cells = [g.unflat(k) for k in nodes]
+        steps = self._instructions(cells, nodes)
+        if steps and steps[-1].startswith("Exit the building"):
+            steps[-1] = "You have arrived"
+        return {"reachable": True, "reason": "", "path": self._simplify(cells),
+                "distance_m": round(self._length(cells), 1),
+                "max_smoke": round(float(max(self.smoke[c] for c in cells)), 2), "instructions": steps}
+
     def route_from(self, fi, x, y):
         g = self.grid
         start = g.nearest_walkable(fi, x, y, max_dist=3.0, mask=self.passable[fi])
