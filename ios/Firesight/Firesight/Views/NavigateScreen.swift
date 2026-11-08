@@ -2,302 +2,197 @@ import AVFoundation
 import Combine
 import SwiftUI
 
-/// Live camera screen. Layout and copy follow viewer/phone.html `#live`.
+/// Sensors stay active while either the floor map or camera is visible.
 struct NavigateScreen: View {
     @ObservedObject var world: WorldModel
     var onExpandMap: () -> Void
+    var onHome: () -> Void
 
     @StateObject private var camera = CameraSession()
     @State private var heading = HeadingMonitor()
     @State private var steps = StepCounter()
     @State private var speech = GuideSpeech()
-    @State private var phoneHeading: Double?
-    @State private var compassOn = false
+    @State private var cameraView = false
     @State private var cameraOn = false
     @State private var muted = false
-    @State private var flash = ""
-    @State private var flashOn = false
+    @State private var active = false
+    @State private var motionStatus = "Starting motion tracking..."
     @State private var lastQR = ""
     @State private var lastQRAt = Date.distantPast
-    @State private var lastSig = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .bottom) {
-                CameraPreview(session: camera.session)
-                    .ignoresSafeArea()
-                GuideOverlay(
-                    angle: arrowRadians,
-                    show: showArrow,
-                    unsure: unsure
-                )
-                .ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 0) {
-                    banner
-                    if !world.whereLine().isEmpty {
-                        Text(world.whereLine())
-                            .font(.system(size: 15, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .shadow(color: .black, radius: 2, y: 1)
-                            .padding(.top, 8)
-                            .padding(.horizontal, 12)
-                    }
-                    if !compassOn {
-                        chip("Compass off")
-                    }
-                    if !cameraOn {
-                        chip("Camera off")
-                    }
-                    if unsure {
-                        Text("Not sure where you are. Point the camera at a door number.")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(Color(rgb: 0x0E1116, alpha: 0.9))
-                            .overlay(RoundedRectangle(cornerRadius: 999).stroke(Color.white.opacity(0.8), lineWidth: 2))
-                            .clipShape(RoundedRectangle(cornerRadius: 999))
-                            .padding(.top, 8)
-                            .padding(.horizontal, 12)
-                    }
-                    if !world.seenText.isEmpty {
-                        chip("Door \(world.seenText)")
-                    }
-                    Spacer()
-                }
-                if flashOn {
-                    Text(flash)
-                        .font(.system(size: 28, weight: .heavy))
-                        .foregroundStyle(Color(rgb: 0x111111))
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 14)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .position(x: geo.size.width / 2, y: geo.size.height * 0.46)
-                        .allowsHitTesting(false)
-                }
-                if world.arrived {
-                    VStack(spacing: 6) {
-                        Text("You are at \(world.destinationLabel).")
-                            .font(.system(size: 34, weight: .bold))
-                        Text("You made it.")
-                            .font(.system(size: 18, weight: .bold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(18)
-                    .frame(maxWidth: .infinity)
-                    .background(PhoneColor.safe)
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.white, lineWidth: 2))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .padding(.horizontal, 16)
-                    .position(x: geo.size.width / 2, y: geo.size.height * 0.42)
-                    .allowsHitTesting(false)
-                }
-                if !world.toast.isEmpty {
-                    Text(world.toast)
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundStyle(Color(rgb: 0x111111))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.horizontal, 12)
-                        .position(x: geo.size.width / 2, y: geo.size.height - 300)
-                        .allowsHitTesting(false)
-                }
-                BuildingSceneView(world: world, mode: .mini, onExpand: onExpandMap)
-                    .frame(width: geo.size.width * 0.40, height: min(geo.size.width * 0.40, geo.size.height * 0.30))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 2))
-                    .position(x: geo.size.width - 10 - geo.size.width * 0.20, y: geo.size.height - 264 - min(geo.size.width * 0.40, geo.size.height * 0.30) / 2)
-                    .accessibilityLabel("Floor map. Tap to expand.")
-                controlBar
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: onHome) { Label("Home", systemImage: "house.fill") }
+                    .accessibilityHint("Change your current location and destination")
+                Spacer()
+                Text("Floor \(world.pose?.level ?? 0)").fontWeight(.bold)
+                Spacer()
+                Button(action: onExpandMap) { Label("Expand", systemImage: "arrow.up.left.and.arrow.down.right") }
             }
+            .font(.system(size: 16, weight: .bold))
+            .padding(12)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(world.actionText()).font(.system(size: 23, weight: .heavy))
+                Text(world.whereLine()).font(.system(size: 15, weight: .semibold))
+                HStack {
+                    Text("To \(world.destinationLabel)")
+                    Spacer()
+                    if let meters = world.route?.distanceM {
+                        Text("\(Int(meters.rounded())) m remaining")
+                    }
+                }
+                .font(.system(size: 14))
+                .foregroundStyle(PhoneColor.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(world.arrived ? PhoneColor.safe : PhoneColor.card)
+            .accessibilityElement(children: .combine)
+
+            Picker("Navigation view", selection: $cameraView) {
+                Text("3D floor map").tag(false)
+                Text("Camera").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .padding(10)
+
+            ZStack(alignment: .topLeading) {
+                if cameraView {
+                    CameraPreview(session: camera.session)
+                    GuideOverlay(angle: arrowRadians, show: showArrow, unsure: unsure)
+                    if !cameraOn { mapChip("Camera unavailable. Use the 3D floor map.") }
+                    else if world.posMode == .sensors && world.headingDeg == nil {
+                        mapChip("Waiting for compass. Use the floor map to orient yourself.")
+                    }
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            BuildingSceneView(world: world, mode: .mini, onExpand: onExpandMap)
+                                .frame(width: 132, height: 132)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.white, lineWidth: 2))
+                                .padding(10)
+                        }
+                    }
+                } else {
+                    BuildingSceneView(world: world, mode: .map, followsUser: true)
+                    mapChip(world.posMode == .demo ? "Demo position | Blue line is your path" : "You are here | Blue line is your path")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .accessibilityLabel("Current floor map with your position and route")
+
+            controlBar
         }
-        .background(Color(rgb: 0x05070A))
+        .foregroundStyle(.white)
+        .background(PhoneColor.bg)
         .onAppear(perform: startSensors)
         .onDisappear(perform: stopSensors)
-        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
-            if world.arrived {
-                world.walking = false
-            } else if world.walking {
-                world.demoWalk(dt: 0.1)
-            }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { startSensors() } else { stopSensors() }
         }
-        .onChange(of: routeSig) { _, sig in
-            if !lastSig.isEmpty && sig != lastSig {
-                showFlash("Route changed")
-                if !muted { speech.say("Route changed") }
-            }
-            lastSig = sig
+        .onReceive(Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()) { _ in
+            guard active else { return }
+            if heading.currentHeading == nil && world.headingDeg != nil { world.updateHeading(nil) }
+            if world.arrived { world.walking = false }
+            else if world.walking { world.demoWalk(dt: 0.1) }
         }
         .onChange(of: world.speechLine) { _, line in
-            if !muted { speech.say(line) }
+            if active && !muted { speech.say(line) }
         }
         .onChange(of: world.toast) { _, text in
             guard !text.isEmpty else { return }
             Task {
-                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
                 if world.toast == text { world.toast = "" }
             }
         }
     }
 
-    private var banner: some View {
-        let hazard = world.hazardText()
-        return VStack(alignment: .leading, spacing: 4) {
-            if !hazard.isEmpty {
-                Text(hazard)
-                    .font(.system(size: 24, weight: .heavy))
-            }
-            Text(world.actionText())
-                .font(.system(size: 24, weight: .heavy))
-            if !world.destinationLabel.isEmpty {
-                Text(world.destinationLabel)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color(rgb: 0xE8EEF5))
-                    .padding(.top, 2)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(hazard.isEmpty ? Color(rgb: 0x080A0E, alpha: 0.88) : PhoneColor.bad)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(hazard.isEmpty ? Color.white.opacity(0.85) : Color(rgb: 0xFFD2D2), lineWidth: 2)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.top, 10)
-        .padding(.horizontal, 12)
-        .accessibilityElement(children: .combine)
-    }
-
     private var controlBar: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 0) {
-                segButton("Sensors", on: world.posMode == .sensors) {
-                    world.setPosMode(.sensors)
-                }
-                segButton("Demo walk", on: world.posMode == .demo) {
-                    world.setPosMode(.demo)
-                }
+            if !world.toast.isEmpty {
+                Text(world.toast).font(.system(size: 14, weight: .bold))
             }
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 2))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            Picker("Position source", selection: Binding(get: { world.posMode }, set: { world.setPosMode($0) })) {
+                Text("Live walking").tag(PosMode.sensors)
+                Text("Demo walk").tag(PosMode.demo)
+            }
+            .pickerStyle(.segmented)
+            if world.posMode == .demo {
+                Button(world.walking ? "Pause demo" : "Play demo") { world.toggleWalk() }
+                    .buttonStyle(BarFillStyle(fill: PhoneColor.go, border: .white))
+                    .disabled(world.route?.reachable != true || world.arrived)
+            } else {
+                Text("\(motionStatus) | \(world.pose?.nSteps ?? 0) steps")
+                    .font(.system(size: 13, weight: .semibold))
+                    .multilineTextAlignment(.center)
+            }
             HStack(spacing: 8) {
-                barButton(world.walking ? "Walking" : "Walk", filled: world.walking) {
-                    world.toggleWalk()
-                }
-                barButton(muted ? "Muted" : "Mute", filled: muted, fill: Color(rgb: 0x3A4250)) {
+                Button(muted ? "Voice off" : "Voice on") {
                     muted.toggle()
                     if muted { speech.stop() }
+                    else { speech.say(world.actionText(), force: true) }
                 }
+                .buttonStyle(BarFillStyle(fill: PhoneColor.card, border: .white))
+                Button("Replay") {
+                    muted = false
+                    speech.say(world.actionText(), force: true)
+                    if AVAudioSession.sharedInstance().outputVolume == 0 {
+                        world.showToast("Media volume is zero. Turn it up to hear directions.")
+                    }
+                }
+                .buttonStyle(BarFillStyle(fill: PhoneColor.card, border: .white))
+                .accessibilityLabel("Replay spoken directions")
             }
-            barButton("I took the stairs", filled: false) {
-                world.jumpStairs()
-            }
-            HStack(spacing: 8) {
-                Button("I'm safe") { world.mark("safe") }
-                    .buttonStyle(BarFillStyle(fill: PhoneColor.safe, border: Color(rgb: 0x8EEDB0)))
-                Button("I'm trapped") { world.mark("trapped") }
-                    .buttonStyle(BarFillStyle(fill: PhoneColor.trap, border: Color(rgb: 0xFFB4B4)))
-            }
+            Button("I took the stairs") { world.jumpStairs() }
+                .font(.system(size: 15, weight: .bold))
+                .frame(maxWidth: .infinity, minHeight: 44)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 28)
-        .padding(.bottom, 10)
-        .background(
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.82)],
-                startPoint: .top,
-                endPoint: UnitPoint(x: 0.5, y: 0.28)
-            )
-        )
-        .frame(maxWidth: .infinity, alignment: .bottom)
+        .padding(10)
+        .background(PhoneColor.bg)
     }
 
+    private var unsure: Bool { world.posMode == .sensors && world.pose?.unsure == true }
     private var showArrow: Bool {
-        guard let route = world.route, route.reachable, !world.arrived else { return false }
-        return true
+        world.route?.reachable == true && !world.arrived && (world.posMode == .demo || world.headingDeg != nil)
     }
-
-    private var unsure: Bool {
-        world.posMode == .sensors && (world.pose?.unsure == true)
-    }
-
     private var arrowRadians: Double {
-        guard let hints = world.hints else { return 0 }
-        let deg: Double
-        if compassOn, let phoneHeading {
-            deg = hints.headingCompassDeg - phoneHeading
-        } else {
-            deg = hints.headingPlanDeg
-        }
-        return deg * .pi / 180
+        (world.relativeHeading ?? 0) * .pi / 180
     }
-
-    private var routeSig: String {
-        guard let first = world.route?.path.first else { return world.destinationId ?? "" }
-        return "\(world.destinationId ?? "")|\(first.level),\(first.x),\(first.y)"
-    }
-
-    private func chip(_ text: String) -> some View {
+    private func mapChip(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 14, weight: .heavy))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.black.opacity(0.78))
-            .overlay(Capsule().stroke(Color.white, lineWidth: 2))
-            .clipShape(Capsule())
-            .padding(.top, 8)
-            .padding(.leading, 12)
-    }
-
-    private func segButton(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .font(.system(size: 15, weight: .heavy))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(on ? PhoneColor.go : Color.clear)
-    }
-
-    private func barButton(_ title: String, filled: Bool, fill: Color = PhoneColor.go, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .buttonStyle(BarFillStyle(fill: filled ? fill : Color(rgb: 0x0A0C10, alpha: 0.9), border: .white))
-    }
-
-    private func showFlash(_ text: String) {
-        flash = text
-        flashOn = true
-        Task {
-            try? await Task.sleep(nanoseconds: 2_200_000_000)
-            if flash == text { flashOn = false }
-        }
+            .font(.system(size: 13, weight: .bold))
+            .padding(10)
+            .background(PhoneColor.bg.opacity(0.9), in: RoundedRectangle(cornerRadius: 10))
+            .padding(10)
+            .allowsHitTesting(false)
     }
 
     private func startSensors() {
+        guard !active else { return }
+        active = true
+        speech.onError = { world.showToast($0) }
         heading.onUpdate = { deg in
-            DispatchQueue.main.async {
-                phoneHeading = deg
-                compassOn = true
-            }
+            guard active else { return }
+            world.updateHeading(deg)
         }
         heading.start()
-        steps.start(heading: { [heading] in heading.heading ?? 0 }) { deg, length in
-            DispatchQueue.main.async {
-                if world.posMode == .sensors {
-                    world.applyStep(headingDeg: deg, lengthM: length)
-                }
-            }
+        steps.onStatus = { motionStatus = $0 }
+        steps.start(heading: { [heading] in heading.currentHeading }) { deg, length in
+            if active && world.posMode == .sensors { world.applyStep(headingDeg: deg, lengthM: length) }
         }
         camera.onQR = { raw in
             DispatchQueue.main.async {
+                guard active, world.posMode == .sensors else { return }
                 let code = QRCode.roomCode(from: raw)
                 let now = Date()
-                if code == lastQR && now.timeIntervalSince(lastQRAt) < 5 { return }
+                if code == lastQR && now.timeIntervalSince(lastQRAt) < 10 { return }
                 lastQR = code
                 lastQRAt = now
                 world.snap(toQR: raw)
@@ -307,28 +202,29 @@ struct NavigateScreen: View {
             Task {
                 let hits = await TextScanner.recognize(image)
                 await MainActor.run {
-                    if world.posMode == .sensors {
-                        world.observe(readings: hits)
-                    }
+                    if active && world.posMode == .sensors { world.observe(readings: hits) }
                 }
             }
         }
         AVCaptureDevice.requestAccess(for: .video) { ok in
             DispatchQueue.main.async {
+                guard active else { return }
                 cameraOn = ok
                 if ok { camera.start() }
             }
         }
-        if !muted, !world.speechLine.isEmpty {
-            speech.say(world.speechLine)
-        }
-        lastSig = routeSig
+        if !muted { speech.say(world.actionText(), force: true) }
     }
 
     private func stopSensors() {
+        active = false
+        world.walking = false
+        camera.onQR = nil
+        camera.onFrame = nil
         camera.stop()
         heading.stop()
         steps.stop()
+        world.updateHeading(nil)
         speech.stop()
     }
 }
@@ -381,7 +277,7 @@ struct GuideOverlay: View {
         let depth = min(h * 0.30, 240)
         let n = 6
         var base = ctx
-        base.translateBy(x: w / 2, y: h - 270)
+        base.translateBy(x: w / 2, y: h * 0.88)
         base.rotate(by: .radians(angle))
         for i in stride(from: n - 1, through: 0, by: -1) {
             let dist = (CGFloat(i) + 0.15) / CGFloat(n)
@@ -396,7 +292,7 @@ struct GuideOverlay: View {
     }
 
     private func drawArrow(_ ctx: GraphicsContext, w: CGFloat, h: CGFloat) {
-        let cy = max(176, min(h * 0.40, h - 332))
+        let cy = h * 0.44
         var g = ctx
         g.translateBy(x: w / 2, y: cy)
         g.rotate(by: .radians(angle))

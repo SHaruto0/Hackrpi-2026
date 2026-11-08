@@ -10,7 +10,7 @@ enum SceneMode {
 struct BuildingSceneView: UIViewRepresentable {
     @ObservedObject var world: WorldModel
     var mode: SceneMode
-    var placesYou = false
+    var followsUser = false
     var onExpand: () -> Void = {}
 
     func makeUIView(context: Context) -> SCNView {
@@ -19,45 +19,43 @@ struct BuildingSceneView: UIViewRepresentable {
         view.backgroundColor = UIColor(rgb: 0x2A313C)
         view.antialiasingMode = .multisampling2X
         view.autoenablesDefaultLighting = true
-        view.allowsCameraControl = mode == .map
+        view.allowsCameraControl = mode == .map && !followsUser
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
-        let hold = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.held(_:)))
-        hold.minimumPressDuration = 0.45
         view.addGestureRecognizer(tap)
-        view.addGestureRecognizer(hold)
         context.coordinator.view = view
-        context.coordinator.buildIfNeeded()
+        context.coordinator.sync()
         return view
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) {
         context.coordinator.world = world
         context.coordinator.mode = mode
-        context.coordinator.placesYou = placesYou
+        context.coordinator.followsUser = followsUser
         context.coordinator.onExpand = onExpand
-        uiView.allowsCameraControl = mode == .map
+        uiView.allowsCameraControl = mode == .map && !followsUser
         context.coordinator.sync()
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(world: world, mode: mode, onExpand: onExpand)
+        let coordinator = Coordinator(world: world, mode: mode, onExpand: onExpand)
+        coordinator.followsUser = followsUser
+        return coordinator
     }
 
     final class Coordinator: NSObject {
         var world: WorldModel
         var mode: SceneMode
-        var placesYou = false
+        var followsUser = false
         var onExpand: () -> Void
         let scene = SCNScene()
         weak var view: SCNView?
         private var built = false
         private var floorNodes: [Int: SCNNode] = [:]
         private var roomNodes: [String: SCNNode] = [:]
-        private var hazardNodes: [Int: SCNNode] = [:]
         private let routeNode = SCNNode()
-        private let dot = SCNNode(geometry: SCNSphere(radius: 0.45))
+        private let dot = SCNNode(geometry: SCNSphere(radius: 0.6))
         private var routeSig = ""
-        private var hazardSeen = -1
+        private let headingArrow = SCNNode()
         private let camera = SCNNode()
 
         init(world: WorldModel, mode: SceneMode, onExpand: @escaping () -> Void) {
@@ -71,15 +69,37 @@ struct BuildingSceneView: UIViewRepresentable {
             let mat = SCNMaterial()
             mat.diffuse.contents = UIColor(rgb: 0x58A6FF)
             mat.emission.contents = UIColor(rgb: 0x58A6FF)
+            mat.readsFromDepthBuffer = false
+            mat.lightingModel = .constant
+            dot.renderingOrder = 100
             dot.geometry?.materials = [mat]
             scene.rootNode.addChildNode(dot)
+            let ring = SCNNode(geometry: SCNTorus(ringRadius: 0.9, pipeRadius: 0.12))
+            let white = SCNMaterial()
+            white.diffuse.contents = UIColor.white
+            white.emission.contents = UIColor.white
+            white.readsFromDepthBuffer = false
+            ring.geometry?.materials = [white]
+            ring.renderingOrder = 101
+            dot.addChildNode(ring)
+            let label = textNode("YOU ARE HERE", color: .white)
+            label.position = SCNVector3(0, 1.7, 0)
+            dot.addChildNode(label)
+            let arrow = SCNNode(geometry: SCNCone(topRadius: 0, bottomRadius: 0.4, height: 1.2))
+            arrow.geometry?.materials = [white]
+            arrow.eulerAngles.x = -.pi / 2
+            arrow.position = SCNVector3(0, 0, -1.5)
+            arrow.renderingOrder = 101
+            headingArrow.addChildNode(arrow)
+            dot.addChildNode(headingArrow)
         }
 
         func buildIfNeeded() {
             if built { return }
             built = true
             let height = world.model.floorHeightM
-            for (fi, fl) in world.model.floors.enumerated() {
+            for fl in world.model.floors {
+                let fi = world.grid.levelIndex[fl.level] ?? 0
                 let floor = SCNNode()
                 floor.position.y = Float(fi) * Float(height)
                 floor.name = "floor:\(fl.level)"
@@ -109,10 +129,6 @@ struct BuildingSceneView: UIViewRepresentable {
                     post.position = SCNVector3(Float(door.x), 1.1, Float(door.y))
                     floor.addChildNode(post)
                 }
-                let hazards = SCNNode()
-                hazards.name = "hazards"
-                floor.addChildNode(hazards)
-                hazardNodes[fl.level] = hazards
                 scene.rootNode.addChildNode(floor)
                 floorNodes[fl.level] = floor
             }
@@ -123,54 +139,25 @@ struct BuildingSceneView: UIViewRepresentable {
             buildIfNeeded()
             updateHighlights()
             updateRoute()
-            updateHazards()
             updateDot()
             applyFloors()
-            if mode == .mini { aimMini() }
+            if mode == .mini || followsUser { aimAtUser() }
         }
 
         @objc func tapped(_ gesture: UITapGestureRecognizer) {
-            guard let view else { return }
             if mode == .mini {
                 onExpand()
                 return
             }
-            let point = gesture.location(in: view)
-            guard let id = roomId(at: point, in: view) else { return }
-            if placesYou {
-                world.placeAt(roomId: id)
-            } else {
-                world.choose(roomId: id)
-            }
-        }
-
-        @objc func held(_ gesture: UILongPressGestureRecognizer) {
-            guard mode == .map, gesture.state == .began, let view else { return }
-            let point = gesture.location(in: view)
-            guard let id = roomId(at: point, in: view) else { return }
-            world.ignite(roomId: id)
-        }
-
-        private func roomId(at point: CGPoint, in view: SCNView) -> String? {
-            let hits = view.hitTest(point, options: [.searchMode: SCNHitTestSearchMode.all.rawValue])
-            for hit in hits {
-                var node: SCNNode? = hit.node
-                while let current = node {
-                    if let name = current.name, name.hasPrefix("room:") {
-                        return String(name.dropFirst(5))
-                    }
-                    node = current.parent
-                }
-            }
-            return nil
         }
 
         private func updateHighlights() {
+            let currentRoomId = world.currentRoom?.id
             for (id, node) in roomNodes {
                 let mat = node.geometry?.firstMaterial
                 if id == world.destinationId {
                     mat?.emission.contents = UIColor(rgb: 0xD29922)
-                } else if id == world.startRoomId {
+                } else if id == currentRoomId {
                     mat?.emission.contents = UIColor(rgb: 0x3FB950)
                 } else {
                     mat?.emission.contents = UIColor.black
@@ -179,63 +166,52 @@ struct BuildingSceneView: UIViewRepresentable {
         }
 
         private func updateRoute() {
-            let sig = world.route?.path.map { "\($0.level),\($0.x),\($0.y)" }.joined(separator: ";") ?? ""
+            let sig = "\(world.pose?.level ?? 0)|" + (world.route?.path.map { "\($0.level),\($0.x),\($0.y)" }.joined(separator: ";") ?? "")
             if sig == routeSig { return }
             routeSig = sig
             routeNode.childNodes.forEach { $0.removeFromParentNode() }
-            guard let path = world.route?.path, path.count >= 2 else { return }
+            guard let path = world.route?.path, !path.isEmpty else { return }
             let mat = SCNMaterial()
             mat.diffuse.contents = UIColor(rgb: 0x58A6FF)
             mat.emission.contents = UIColor(rgb: 0x58A6FF)
-            for i in 1..<path.count {
+            mat.lightingModel = .constant
+            mat.readsFromDepthBuffer = false
+            for i in path.indices.dropFirst() {
                 let a = path[i - 1], b = path[i]
+                guard a.level == world.pose?.level, b.level == a.level else { continue }
                 let pa = worldPoint(a)
                 let pb = worldPoint(b)
                 let dx = pb.x - pa.x, dy = pb.y - pa.y, dz = pb.z - pa.z
                 let len = sqrt(dx * dx + dy * dy + dz * dz)
                 if len < 0.05 { continue }
-                let cyl = SCNCylinder(radius: 0.18, height: CGFloat(len))
+                let cyl = SCNCylinder(radius: 0.24, height: CGFloat(len))
                 cyl.materials = [mat]
                 let node = SCNNode(geometry: cyl)
                 node.position = SCNVector3((pa.x + pb.x) / 2, (pa.y + pb.y) / 2, (pa.z + pb.z) / 2)
                 node.look(at: pb, up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 1, 0))
+                node.renderingOrder = 50
                 routeNode.addChildNode(node)
             }
-            if let last = path.last {
+            if let last = path.last, last.level == world.pose?.level {
                 let end = SCNNode(geometry: SCNSphere(radius: 0.4))
-                end.geometry?.materials = [mat]
+                let gold = mat.copy() as! SCNMaterial
+                gold.diffuse.contents = UIColor(rgb: 0xFFD166)
+                gold.emission.contents = UIColor(rgb: 0xFFD166)
+                end.geometry?.materials = [gold]
+                end.renderingOrder = 60
                 end.position = worldPoint(last)
                 routeNode.addChildNode(end)
+                let label = textNode(world.destinationLabel, color: UIColor(rgb: 0xFFD166))
+                label.position = end.position
+                label.position.y += 1.5
+                routeNode.addChildNode(label)
             }
-        }
-
-        private func updateHazards() {
-            if world.hazardRev == hazardSeen { return }
-            hazardSeen = world.hazardRev
-            for node in hazardNodes.values { node.childNodes.forEach { $0.removeFromParentNode() } }
-            var firePts: [Int: [(Int, Int)]] = [:]
-            var smokePts: [Int: [(Int, Int, Float)]] = [:]
-            let grid = world.grid
-            for fi in 0..<grid.levels.count {
-                let level = grid.levels[fi]
-                let base = fi * grid.rows * grid.cols
-                for r in 0..<grid.rows {
-                    for c in 0..<grid.cols {
-                        let i = base + r * grid.cols + c
-                        if i >= world.fireCells.count { continue }
-                        if world.fireCells[i] {
-                            firePts[level, default: []].append((r, c))
-                        } else if i < world.smokeCells.count, world.smokeCells[i] >= 0.15 {
-                            smokePts[level, default: []].append((r, c, world.smokeCells[i]))
-                        }
-                    }
-                }
-            }
-            for (level, cells) in firePts {
-                hazardNodes[level]?.addChildNode(cellMesh(cells.map { ($0.0, $0.1, Float(1)) }, color: UIColor(rgb: 0xFF4D3D), y: 0.12))
-            }
-            for (level, cells) in smokePts {
-                hazardNodes[level]?.addChildNode(cellMesh(cells, color: UIColor(rgb: 0xD9A441), y: 0.08))
+            if let index = path.indices.dropFirst().first(where: { path[$0 - 1].level == world.pose?.level && path[$0].level != world.pose?.level }) {
+                let landing = path[index - 1]
+                let label = textNode("STAIRS TO FLOOR \(path[index].level)", color: UIColor(rgb: 0xFFD166))
+                label.position = worldPoint(landing)
+                label.position.y += 1.5
+                routeNode.addChildNode(label)
             }
         }
 
@@ -247,15 +223,16 @@ struct BuildingSceneView: UIViewRepresentable {
             dot.isHidden = false
             let y = Float(fi) * Float(world.model.floorHeightM) + 1.2
             dot.position = SCNVector3(Float(pose.x), y, Float(pose.y))
+            dot.geometry?.firstMaterial?.diffuse.contents = UIColor(rgb: pose.unsure ? 0xFFD166 : 0x58A6FF)
+            dot.geometry?.firstMaterial?.emission.contents = UIColor(rgb: pose.unsure ? 0xFFD166 : 0x58A6FF)
+            let bearing = world.posMode == .demo ? world.hints?.headingPlanDeg : world.headingDeg.map { $0 - world.model.planNorthDeg }
+            headingArrow.isHidden = bearing == nil
+            headingArrow.eulerAngles.y = -Float(bearing ?? 0) * .pi / 180
+
         }
 
         private func applyFloors() {
-            let show: Int?
-            if mode == .mini {
-                show = world.pose?.level ?? world.model.levels.first
-            } else {
-                show = world.floorFilter
-            }
+            let show = world.pose?.level ?? world.model.levels.first
             for (level, node) in floorNodes {
                 node.isHidden = show != nil && level != show
             }
@@ -271,18 +248,36 @@ struct BuildingSceneView: UIViewRepresentable {
             view?.pointOfView = camera
         }
 
-        private func aimMini() {
-            let grid = world.grid
-            let pose = world.pose
-            let x = Float(pose?.x ?? (grid.originX + Double(grid.cols) * grid.cell / 2))
-            let z = Float(pose?.y ?? (grid.originY + Double(grid.rows) * grid.cell / 2))
-            let span = Float(max(grid.cols, grid.rows)) * Float(grid.cell)
+        private func aimAtUser() {
+            guard let pose = world.pose else { return }
+            let fi = world.grid.levelIndex[pose.level] ?? 0
+            let y = Float(fi) * Float(world.model.floorHeightM)
+            let x = Float(pose.x), z = Float(pose.y)
             camera.camera?.usesOrthographicProjection = true
-            camera.camera?.orthographicScale = Double(span) * (mode == .mini ? 0.22 : 0.5)
-            camera.position = SCNVector3(x, 80, z + 0.01)
-            camera.look(at: SCNVector3(x, 0, z))
+            camera.camera?.orthographicScale = mode == .mini ? 11 : 15
+            camera.position = SCNVector3(x, y + 30, z + (mode == .mini ? 0.01 : 16))
+            camera.look(at: SCNVector3(x, y, z))
             view?.pointOfView = camera
             view?.allowsCameraControl = false
+        }
+
+        private func textNode(_ text: String, color: UIColor) -> SCNNode {
+            let geometry = SCNText(string: text, extrusionDepth: 0)
+            geometry.font = UIFont.systemFont(ofSize: 1, weight: .heavy)
+            geometry.flatness = 0.2
+            let material = SCNMaterial()
+            material.diffuse.contents = color
+            material.emission.contents = color
+            material.lightingModel = .constant
+            material.readsFromDepthBuffer = false
+            geometry.materials = [material]
+            let node = SCNNode(geometry: geometry)
+            let (min, max) = geometry.boundingBox
+            node.pivot = SCNMatrix4MakeTranslation((min.x + max.x) / 2, min.y, 0)
+            node.scale = SCNVector3(0.6, 0.6, 0.6)
+            node.constraints = [SCNBillboardConstraint()]
+            node.renderingOrder = 102
+            return node
         }
 
         private func worldPoint(_ p: PathPoint) -> SCNVector3 {
@@ -291,27 +286,10 @@ struct BuildingSceneView: UIViewRepresentable {
             return SCNVector3(Float(p.x), y, Float(p.y))
         }
 
-        private func cellMesh(_ cells: [(Int, Int, Float)], color: UIColor, y: Float) -> SCNNode {
-            let parent = SCNNode()
-            let grid = world.grid
-            let mat = SCNMaterial()
-            mat.diffuse.contents = color
-            mat.emission.contents = color
-            mat.transparency = 0.85
-            let box = SCNBox(width: CGFloat(grid.cell * 0.9), height: 0.08, length: CGFloat(grid.cell * 0.9), chamferRadius: 0)
-            box.materials = [mat]
-            for (r, c, _) in cells.prefix(4000) {
-                let node = SCNNode(geometry: box)
-                node.position = SCNVector3(Float(grid.centerX(c)), y, Float(grid.centerY(r)))
-                parent.addChildNode(node)
-            }
-            return parent
-        }
-
         private func wallNode(_ walls: [WallSeg]) -> SCNNode {
             var verts: [SCNVector3] = []
             var indices: [Int32] = []
-            let h: Float = 2.4
+            let h: Float = 0.7
             let thick: Float = 0.12
             for w in walls {
                 let x1 = Float(w.x1), z1 = Float(w.y1)

@@ -45,6 +45,8 @@ final class CameraSession: NSObject, ObservableObject, AVCaptureVideoDataOutputS
     private func configure() {
         if configured { return }
         session.beginConfiguration()
+        // This video-only session must not replace the spoken guidance audio session.
+        session.automaticallyConfiguresApplicationAudioSession = false
         session.sessionPreset = .high
         defer { session.commitConfiguration() }
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
@@ -56,6 +58,9 @@ final class CameraSession: NSObject, ObservableObject, AVCaptureVideoDataOutputS
         video.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
         video.setSampleBufferDelegate(self, queue: queue)
         if session.canAddOutput(video) { session.addOutput(video) }
+        if let connection = video.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
+            connection.videoRotationAngle = 90
+        }
         let meta = AVCaptureMetadataOutput()
         if session.canAddOutput(meta) {
             session.addOutput(meta)

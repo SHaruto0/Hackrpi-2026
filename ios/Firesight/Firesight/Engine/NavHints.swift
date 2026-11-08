@@ -41,7 +41,9 @@ enum NavMath {
             turn = "arrive"
         } else {
             let fol = path[i + 1]
-            if let after = bearing(px, py, fol.x, fol.y) {
+            if fol.level != pl {
+                turn = fol.level > pl ? "stairs_up" : "stairs_down"
+            } else if let after = bearing(px, py, fol.x, fol.y) {
                 turn = turnName(heading, after)
             } else {
                 turn = "arrive"

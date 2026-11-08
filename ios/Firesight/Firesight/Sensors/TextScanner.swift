@@ -33,9 +33,15 @@ enum TextScanner {
 final class HeadingMonitor: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private(set) var heading: Double?
+    private var updatedAt = Date.distantPast
+    var currentHeading: Double? {
+        Date().timeIntervalSince(updatedAt) < 5 ? heading : nil
+    }
     var onUpdate: ((Double) -> Void)?
 
     func start() {
+        heading = nil
+        updatedAt = .distantPast
         manager.delegate = self
         manager.headingFilter = 1
         manager.requestWhenInUseAuthorization()
@@ -46,11 +52,17 @@ final class HeadingMonitor: NSObject, CLLocationManagerDelegate {
 
     func stop() {
         manager.stopUpdatingHeading()
+        heading = nil
+        updatedAt = .distantPast
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         let raw = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
-        guard raw >= 0 else { return }
+        guard newHeading.headingAccuracy >= 0, newHeading.headingAccuracy <= 45, raw >= 0 else {
+            heading = nil
+            return
+        }
+        updatedAt = Date()
         smooth(raw)
         if let heading { onUpdate?(heading) }
     }

@@ -1,55 +1,40 @@
 import SwiftUI
 
-/// Full building. Tap a room to set where you are, the same job as phone.html `#mapFull`.
-/// Hold a room to start the fire. Step and Play spread it so the route can flip.
+/// A cutaway of the user's current floor. Position changes require an explicit fix.
 struct MapScreen: View {
     @ObservedObject var world: WorldModel
     var onClose: () -> Void
+    var onHome: () -> Void
+    @State private var followsUser = true
 
     var body: some View {
         VStack(spacing: 0) {
-            BuildingSceneView(world: world, mode: .map, placesYou: true)
+            HStack {
+                Button(action: onHome) { Label("Home", systemImage: "house.fill") }
+                Spacer()
+                Text("Floor \(world.pose?.level ?? 0)").fontWeight(.heavy)
+                Spacer()
+                Button("Close", action: onClose)
+            }
+            .font(.system(size: 17, weight: .bold))
+            .padding(16)
+            BuildingSceneView(world: world, mode: .map, followsUser: followsUser)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             VStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    mapButton(world.playing ? "Pause" : "Play") { world.setPlaying(!world.playing) }
-                    mapButton("Step") { world.stepFire(1) }
-                    mapButton("Reset") { world.resetFire() }
-                }
-                HStack(spacing: 12) {
-                    Text(caption)
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Close", action: onClose)
-                        .font(.system(size: 18, weight: .heavy))
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 120, minHeight: 52)
-                        .background(PhoneColor.card)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 2))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
+                Text(world.whereLine()).font(.headline)
+                Text(world.actionText()).font(.subheadline)
+                Text("You are here | Blue path | Gold destination")
+                    .font(.caption)
+                    .foregroundStyle(PhoneColor.muted)
+                Button(followsUser ? "Explore floor" : "Recenter on me") { followsUser.toggle() }
+                    .buttonStyle(GhostButtonStyle())
+                Text(followsUser ? "Map follows you as you walk." : "Drag to rotate. Pinch to zoom.")
+                    .font(.caption)
             }
             .padding(12)
-            .background(PhoneColor.bg)
         }
+        .foregroundStyle(.white)
         .background(PhoneColor.bg)
-    }
-
-    private var caption: String {
-        if world.fireTime > 0 {
-            return "Fire t=\(world.fireTime). Tap where you are."
-        }
-        return "Tap where you are. Hold a room to start a fire."
-    }
-
-    private func mapButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action)
-            .font(.system(size: 16, weight: .heavy))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Color(rgb: 0x0A0C10, alpha: 0.9))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white, lineWidth: 2))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onChange(of: world.pose?.level) { _, _ in followsUser = true }
     }
 }

@@ -55,6 +55,7 @@ struct RootView: View {
     @StateObject private var app = AppModel()
     @State private var screen: PhoneStep = .whereYou
     @State private var mapOpen = false
+    @State private var locationError: String?
 
     private var rooms: [RoomChoice] {
         guard let world = app.world else { return [] }
@@ -67,8 +68,7 @@ struct RootView: View {
             if let world = app.world {
                 flow(world)
                 if mapOpen {
-                    MapScreen(world: world) { mapOpen = false }
-                        .ignoresSafeArea()
+                    MapScreen(world: world, onClose: { mapOpen = false }, onHome: { goHome(world) })
                 }
             } else if app.failed {
                 Text("Could not read the building map.")
@@ -89,9 +89,13 @@ struct RootView: View {
     private func flow(_ world: WorldModel) -> some View {
         switch screen {
         case .whereYou:
-            RoomPickScreen(title: "Where are you?", rooms: rooms, message: pickMessage(world)) { room in
-                world.setStart(roomId: room.id)
-                if world.pose != nil { screen = .whereTo }
+            RoomPickScreen(title: "Where are you?", rooms: rooms, message: locationError) { room in
+                if world.setStart(roomId: room.id) {
+                    locationError = nil
+                    screen = .whereTo
+                } else {
+                    locationError = world.status
+                }
             }
         case .whereTo:
             RoomPickScreen(title: "Where to?", rooms: rooms, message: nil, onBack: { screen = .whereYou }) { room in
@@ -100,21 +104,20 @@ struct RootView: View {
             }
         case .ready:
             ReadyScreen(
-                floor: world.pose?.level ?? 0,
-                label: world.startLabel.isEmpty ? "Room" : world.startLabel,
-                destination: world.destinationLabel.isEmpty ? "a room" : world.destinationLabel,
-                canStart: world.canNavigate,
+                world: world,
                 onStart: { screen = .live },
                 onBack: { screen = .whereYou }
             )
         case .live:
-            NavigateScreen(world: world) { mapOpen = true }
+            NavigateScreen(world: world, onExpandMap: { mapOpen = true }, onHome: { goHome(world) })
         }
     }
 
-    private func pickMessage(_ world: WorldModel) -> String? {
-        if world.status.contains("no walkable") { return "That room is not on the map." }
-        return nil
+    private func goHome(_ world: WorldModel) {
+        mapOpen = false
+        locationError = nil
+        world.endNavigation()
+        screen = .whereYou
     }
 }
 

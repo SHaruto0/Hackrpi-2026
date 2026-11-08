@@ -151,10 +151,11 @@ struct RoomPickScreen: View {
 
 /// Confirm screen. Copy follows viewer/phone.html `#ready`.
 struct ReadyScreen: View {
-    let floor: Int
-    let label: String
-    let destination: String
-    let canStart: Bool
+    @ObservedObject var world: WorldModel
+    private var floor: Int { world.pose?.level ?? 0 }
+    private var label: String { world.startLabel }
+    private var destination: String { world.destinationLabel }
+    private var canStart: Bool { world.canNavigate }
     let onStart: () -> Void
     let onBack: () -> Void
 
@@ -173,10 +174,15 @@ struct ReadyScreen: View {
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(PhoneColor.ink)
                 .padding(.bottom, 8)
-            Text("To \(destination). Point your camera down the hall. The arrow shows the way.")
+            Text("To \(destination). Follow your position on the 3D floor map. Hold your phone facing the way you walk. Voice guidance is on.")
                 .font(.system(size: 18))
                 .foregroundStyle(PhoneColor.muted)
                 .padding(.bottom, 18)
+            if !canStart {
+                Text(world.route == nil ? "Finding a route..." : world.actionText())
+                    .foregroundStyle(PhoneColor.warn)
+                    .padding(.bottom, 12)
+            }
             Button("Start", action: onStart)
                 .buttonStyle(GoButtonStyle())
                 .disabled(!canStart)
