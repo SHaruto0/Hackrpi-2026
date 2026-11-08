@@ -1,0 +1,9 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+websockets>=12.0
+numpy>=1.24.0
+opencv-python-headless>=4.9.0
+pycolmap>=3.10.0
+torch
+torchvision
+lightglue @ git+https://github.com/cvg/LightGlue.git
