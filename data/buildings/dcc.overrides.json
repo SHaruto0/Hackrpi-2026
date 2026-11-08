@@ -1,0 +1,12 @@
+{
+  "add_exit": [
+    {"level": 1, "near": [27.19, 73.7], "width": 1.8, "note": "added in editor (bottom of floor 1)"},
+    {"level": 1, "near": [38.78, 65.44], "width": 1.0, "note": "added in editor (bottom of floor 1)"}
+  ],
+  "remove_flight": [
+    {"level": 3, "near": [6.8, 61.7], "radius": 2.0, "note": "floor 3 bottom-left outdoor steps (exits stay)"}
+  ],
+  "vertical_floors": [
+    {"id": "STAIR-1", "floors": [2, 3], "note": "bottom stair: floor 1 part is a separate exit stair"}
+  ]
+}

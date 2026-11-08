@@ -1,0 +1,106 @@
+You are an expert at reading architectural floor plans. You will receive {N} floor plan
+images of the same building ({BUILDING}), in order: {ORDER}.
+These are architectural floor plans, not evacuation maps, so exits are not labeled for you:
+infer them from doors in the exterior wall.
+
+Convert them into ONE structured building model used for 3D rendering and fire-evacuation
+routing. A router will walk people through this model cell by cell: it can only pass through
+door openings, and fire spreads the same way. So closed walls and correctly placed doors
+matter more than anything else.
+
+INSTRUCTIONS
+1. Per floor, identify:
+   - Spaces as polygons: classroom, office, hallway, lobby, restroom, stairwell, elevator,
+     mechanical, lecture_hall, storage, unknown. Use ONLY these types (a ramp is "stairwell").
+     Hallways, corridors and lobbies must be included as spaces.
+   - Walls as straight line segments (approximate curves with several short segments).
+   - Doors: center point, width, and the ids of the two spaces it connects
+     (use "OUTSIDE" for the outdoor side of an exterior door).
+   - Stairwells, elevators, ramps. Room labels/numbers exactly as written.
+
+2. Walls (most important):
+   - Every non-hallway/lobby space must be ENCLOSED: put wall segments along all of its
+     polygon edges. Two rooms that share an edge share one wall segment.
+   - Leave a gap in a wall ONLY where a door is. Do not draw a wall across a door opening.
+   - Open boundaries between two hallways/lobbies need no wall.
+   - Include the exterior walls along the whole outline.
+
+3. Doors:
+   - A door's (x, y) must lie ON a wall segment (or the outline for exterior doors),
+     at the gap you left in that wall.
+   - Every space that is not a hallway/lobby needs at least one door. If you cannot see one,
+     add the most likely door on the edge facing the hallway with confidence <= 0.4
+     and say so in notes.
+   - Exterior exits: doors in the exterior wall that lead outside, exterior_exit = true,
+     lying on the floor outline.
+
+4. Coordinates:
+   - ONE shared coordinate system for ALL floors so they stack correctly.
+   - Origin (0,0) = top-left corner of the building footprint on the lowest floor.
+   - x increases to the right, y increases downward (image orientation). Units: meters.
+   - Use the scale bar or dimensions if present; otherwise assume a single door is 0.9 m wide.
+     Explain how you set scale in "scale_method".
+   - The floor "outline" must contain EVERY space polygon, door and stair/elevator on that
+     floor, including stairwells and elevators at the building corners.
+
+5. Floors and vertical connections:
+   - Align floors using stairwells, elevators and the exterior outline. The same stairwell must
+     have nearly the same (x, y) on every floor it serves. Put any extra shift you applied in
+     each floor's "alignment" (use 0 if coordinates are already in the shared frame).
+   - One vertical_connections entry per stairwell/elevator/ramp, at its center, listing every
+     floor it serves. On EACH of those floors there must be a stairwell (or elevator) space
+     whose polygon contains that (x, y), with a door into the adjacent hallway.
+   - A space spanning several floors (tall lecture hall, atrium) is multi_floor = true and listed
+     in multi_floor_spaces with its door ids on each floor.
+   - Only reuse the same coordinates on two floors when the element really is in the same
+     place (stair cores, elevator shafts). Measure everything else on its own floor's image.
+
+6. Accuracy:
+   - Do NOT invent rooms you cannot see. If unsure, include it with low confidence and
+     explain in "notes". Every element gets a confidence from 0 to 1.
+   - Ids must be unique across the whole building (prefix with the floor, e.g. "F2-204").
+
+SELF-CHECK before answering (fix anything that fails):
+   - Every room/stairwell/elevator polygon has walls on all edges except at its doors.
+   - Every door lies on a wall line, and every non-hallway space has a door.
+   - Every stairwell can be reached from a hallway, and every hallway leads to an exterior
+     exit or a stair.
+   - Every vertical connection point is inside a stairwell/elevator space on each floor it lists.
+   - Every space is inside its floor outline.
+
+OUTPUT: Return ONLY valid JSON matching this schema, no extra text.
+
+{
+  "building": "string",
+  "units": "meters",
+  "scale_method": "string",
+  "floor_height_m": 4.0,
+  "floors": [
+    {
+      "level": 1,
+      "alignment": { "offset_x": 0, "offset_y": 0, "rotation_deg": 0 },
+      "outline": [[0, 0], [40, 0], [40, 24], [0, 24]],
+      "walls": [
+        { "id": "F1-W1", "x1": 0, "y1": 0, "x2": 40, "y2": 0, "exterior": true, "confidence": 0.9 }
+      ],
+      "spaces": [
+        { "id": "F1-101", "label": "101",
+          "type": "classroom|office|hallway|lobby|restroom|stairwell|elevator|mechanical|lecture_hall|storage|unknown",
+          "polygon": [[0, 0], [8, 0], [8, 10], [0, 10]], "multi_floor": false, "confidence": 0.8 }
+      ],
+      "doors": [
+        { "id": "F1-D1", "x": 4, "y": 10, "width": 0.9, "connects": ["F1-101", "F1-HALL"],
+          "exterior_exit": false, "confidence": 0.7 }
+      ],
+      "notes": "string"
+    }
+  ],
+  "vertical_connections": [
+    { "id": "STAIR-WEST", "name": "West Stairs", "type": "stairs|elevator|ramp",
+      "x": 2, "y": 5, "floors": [1, 2, 3], "confidence": 0.9 }
+  ],
+  "multi_floor_spaces": [
+    { "id": "LECTURE-HALL-A", "label": "string", "floors": [1, 2], "door_ids": ["F1-D7", "F2-D3"] }
+  ],
+  "global_notes": "string"
+}

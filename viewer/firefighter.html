@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Firesight Field</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --ink: #ffffff;
+    --muted: #d5dde8;
+    --card: #161b22;
+    --line: #ffffff;
+    --go: #1f6feb;
+    --hot: #c41515;
+    --ok: #3fb950;
+    --amber: #f0c14a;
+    --amber-ink: #1a1200;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 18px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body { padding-bottom: calc(230px + env(safe-area-inset-bottom)); }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 3px solid #fff; outline-offset: 2px;
+  }
+  button:active { transform: scale(0.98); }
+  [hidden] { display: none !important; }
+  h1 { margin: 0; font-size: 34px; line-height: 1.05; }
+  .wrap { padding: 14px 14px 0; padding-top: calc(14px + env(safe-area-inset-top)); }
+  .eyebrow {
+    margin: 0 0 4px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; color: #9fd6ff;
+  }
+  .card {
+    margin: 12px 14px 0; padding: 12px; border: 2px solid var(--line); border-radius: 16px; background: #0b0e13;
+  }
+  .card h2 { margin: 0 0 8px; font-size: 22px; }
+  label { display: block; font-size: 14px; font-weight: 800; letter-spacing: 0.06em; color: #9fd6ff; }
+  #unit, #reportText {
+    width: 100%; margin-top: 6px; border-radius: 12px; border: 2px solid var(--line);
+    background: #0b0e13; padding: 12px 14px;
+  }
+  #unit { min-height: 64px; font-size: 22px; font-weight: 800; }
+  #reportText { min-height: 96px; font-size: 20px; font-weight: 700; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  #link {
+    min-height: 44px; padding: 8px 12px; border-radius: 999px; border: 2px solid var(--line);
+    font-size: 14px; font-weight: 800; letter-spacing: 0.06em;
+  }
+  #link.bad { background: var(--hot); }
+  #link.ok { background: #137333; }
+  .banner {
+    margin: 0 0 10px; padding: 12px 14px; border-radius: 12px;
+    background: var(--amber); color: var(--amber-ink); font-size: 20px; font-weight: 800;
+  }
+  .banner.bad { background: var(--hot); color: #fff; }
+  #note { margin: 0 0 8px; color: var(--muted); font-weight: 700; }
+  #transcript { margin: 0 0 8px; font-size: 26px; font-weight: 800; line-height: 1.2; }
+  #readback { margin: 8px 0 0; font-size: 24px; font-weight: 800; line-height: 1.2; }
+  .muted { color: var(--muted); font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .chip {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px;
+    border-radius: 999px; border: 2px solid #fff; font-size: 16px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.02em;
+  }
+  .k-fire { background: #ff4d3d; color: #1a0503; }
+  .k-smoke { background: var(--amber); color: var(--amber-ink); }
+  .k-clear, .k-searched { background: #7ee787; color: #04140a; }
+  .k-blocked, .k-victim { background: #fff; color: #9d1c1c; }
+  .k-open { background: #79c0ff; color: #041018; }
+  .k-note { background: var(--card); color: #fff; }
+  #changes { margin: 8px 0 0; padding-left: 22px; }
+  #changes li { margin: 4px 0; font-size: 18px; font-weight: 700; }
+  #floors { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+  #floors button, button.go, button.ghost, button.room {
+    border-radius: 14px; border: 2px solid var(--line); font-weight: 800;
+  }
+  #floors button {
+    flex: 0 0 auto; min-height: 56px; min-width: 108px; padding: 8px 14px;
+    background: var(--card); font-size: 18px;
+  }
+  #floors button.on { background: var(--go); }
+  #map {
+    display: block; width: 100%; height: min(52vh, 560px); min-height: 260px;
+    margin-top: 8px; border-radius: 14px; background: var(--bg); touch-action: none;
+  }
+  .legend { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--muted); }
+  button.go {
+    width: 100%; min-height: 72px; margin-top: 10px; background: var(--go); font-size: 24px;
+  }
+  button.go:disabled, button.ghost:disabled, button.room:disabled { opacity: 0.45; }
+  #searchList, #feed { max-height: 52vh; overflow: auto; -webkit-overflow-scrolling: touch; }
+  .floor-h {
+    position: sticky; top: 0; z-index: 1; margin: 0; padding: 8px 2px;
+    background: #0b0e13; color: #9fd6ff; font-size: 14px; font-weight: 800; letter-spacing: 0.06em;
+  }
+  button.room {
+    width: 100%; min-height: 68px; margin: 0 0 8px; padding: 10px 14px;
+    display: block; text-align: left; background: var(--card); font-size: 20px;
+  }
+  .feed-item {
+    margin: 0 0 8px; padding: 10px 12px; border-radius: 12px; border: 2px solid #3d4654; background: var(--card);
+  }
+  .feed-item b { display: block; font-size: 16px; color: #9fd6ff; }
+  .feed-item p { margin: 4px 0 0; font-weight: 700; }
+  .dock {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: #0e1116; border-top: 2px solid #fff;
+  }
+  #ptt {
+    width: 100%; min-height: 104px; border-radius: 16px; border: 3px solid #fff;
+    background: var(--go); color: #fff; font-size: 32px; font-weight: 800; letter-spacing: 0.04em;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  #ptt.hot { background: var(--hot); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse {
+    50% { box-shadow: 0 0 0 4px #fff; }
+  }
+  #btnUndo {
+    width: 100%; min-height: 72px; margin-top: 8px; border-radius: 14px; border: 3px solid #fff;
+    background: transparent; font-size: 22px; font-weight: 800;
+  }
+  @media (min-width: 880px) {
+    .split { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 0 12px; align-items: start; }
+    .split .card { margin-left: 14px; margin-right: 0; }
+    .split .card:last-child { margin-right: 14px; margin-left: 0; }
+    #searchList, #feed { max-height: min(52vh, 560px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #ptt.hot { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div class="grow">
+      <p class="eyebrow">FIRESIGHT FIELD</p>
+      <h1 id="title">Firefighter</h1>
+    </div>
+    <div id="link">LINKING</div>
+  </div>
+  <label for="unit">UNIT
+    <input id="unit" type="text" maxlength="64" autocomplete="off" enterkeyhint="done" placeholder="Engine 1">
+  </label>
+</div>
+
+<section id="result" class="card" aria-live="polite">
+  <p id="error" class="banner bad" hidden></p>
+  <p id="note" hidden></p>
+  <p class="eyebrow">TRANSCRIPT</p>
+  <p id="transcript">Hold to talk, or type a report.</p>
+  <p class="eyebrow">UPDATES</p>
+  <div id="chips" class="chips"></div>
+  <p class="eyebrow">CHANGES</p>
+  <ul id="changes"></ul>
+  <p class="eyebrow">READ-BACK</p>
+  <p id="readback" hidden></p>
+</section>
+
+<div class="split">
+  <section class="card">
+    <h2>Floor map</h2>
+    <div id="floors" role="group" aria-label="Floor"></div>
+    <canvas id="map" aria-label="Floor map with fire, smoke, blocked stairs, and searched rooms"></canvas>
+    <p class="legend">Green: searched. Red: fire. Amber: smoke. White X: blocked stairs.</p>
+  </section>
+  <section class="card">
+    <h2 id="searchTitle">Unsearched</h2>
+    <div id="searchList"><p class="muted">Loading search list.</p></div>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Type a report</h2>
+  <label for="reportText">TEXT
+    <textarea id="reportText" placeholder="Room 318 searched. Stair 2 blocked."></textarea>
+  </label>
+  <button id="btnSend" class="go" type="button">Send report</button>
+</section>
+
+<section class="card">
+  <h2>Reports</h2>
+  <div id="feed"><p class="muted">No field reports yet.</p></div>
+</section>
+
+<div class="dock" role="region" aria-label="Talk">
+  <button id="ptt" type="button" aria-pressed="false">HOLD TO TALK</button>
+  <button id="btnUndo" type="button">Undo last</button>
+</div>
+
+<script>
+(() => {
+  const UNIT_KEY = "firesight.ff.unit";
+  const KINDS = { fire: 1, smoke: 1, clear: 1, searched: 1, blocked: 1, open: 1, victim: 1, note: 1 };
+  const SKIP = { stairwell: 1, elevator: 1, void: 1 };
+  const STT_MSG = "Speech needs FISH_API_KEY. Type the report instead.";
+
+  const $ = (id) => document.getElementById(id);
+  const ptt = $("ptt");
+  const unitInput = $("unit");
+
+  let building = null;
+  let state = { t: 0, rooms: {}, verticals: {}, fire: {}, smoke: {} };
+  let searched = null;
+  let reports = [];
+  let currentLevel = null;
+  let userPicked = false;
+  let sending = false;
+  let hold = false;
+  let rec = null;
+  let stream = null;
+  let chunks = [];
+  let mime = "";
+  let recGen = 0;
+  let speakGen = 0;
+  let audioEl = null;
+  let refreshing = false;
+  let nextBuilding = 0;
+  let searchSig = "";
+  let feedSig = "";
+  let floorSig = "";
+  let audioUnlocked = false;
+
+  try {
+    const saved = localStorage.getItem(UNIT_KEY);
+    if (saved != null) unitInput.value = saved;
+  } catch (e) {}
+
+  unitInput.addEventListener("input", () => {
+    try { localStorage.setItem(UNIT_KEY, unitInput.value); } catch (e) {}
+  });
+
+  function unitName() {
+    const v = (unitInput.value || "").trim();
+    return v || "Unit";
+  }
+
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function asPoint(p) {
+    if (Array.isArray(p)) return [num(p[0]), num(p[1])];
+    if (p && typeof p === "object") return [num(p.x != null ? p.x : p[0]), num(p.y != null ? p.y : p[1])];
+    return [NaN, NaN];
+  }
+
+  function bag(obj, level) {
+    if (!obj || typeof obj !== "object") return [];
+    const hit = obj[level] != null ? obj[level] : obj[String(level)];
+    return Array.isArray(hit) ? hit : [];
+  }
+
+  function changeText(c) {
+    if (typeof c === "string") return c;
+    if (c && typeof c === "object") return c.text || c.change || c.message || "";
+    return c == null ? "" : String(c);
+  }
+
+  function fmtTime(t) {
+    const n = num(t);
+    if (!Number.isFinite(n)) return "";
+    const ms = n > 1e12 ? n : n * 1000;
+    return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }
+
+  function detailOf(data) {
+    if (!data || typeof data !== "object") return "";
+    const d = data.detail != null ? data.detail : data.message;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.map((x) => (x && x.msg) || "").filter(Boolean).join(" ");
+    return "";
+  }
+
+  async function readBody(res) {
+    const text = await res.text();
+    if (!text) return null;
+    try { return JSON.parse(text); } catch (e) { return { detail: text.slice(0, 240) }; }
+  }
+
+  async function getJSON(url) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = await readBody(res);
+      return data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function setLink(ok) {
+    const el = $("link");
+    el.textContent = ok ? "LIVE" : "NO LINK";
+    el.className = ok ? "ok" : "bad";
+  }
+
+  function setError(msg) {
+    const el = $("error");
+    $("note").hidden = true;
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function setNote(msg) {
+    const el = $("note");
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    $("error").hidden = true;
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function resetPtt() {
+    ptt.classList.remove("hot");
+    ptt.setAttribute("aria-pressed", "false");
+    ptt.textContent = sending ? "SENDING" : "HOLD TO TALK";
+  }
+
+  function showChips(updates) {
+    const box = $("chips");
+    box.replaceChildren();
+    if (!updates.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "No updates parsed.";
+      box.appendChild(p);
+      return;
+    }
+    for (const u of updates) {
+      const kind = String((u && u.kind) || "note");
+      const chip = document.createElement("span");
+      chip.className = "chip k-" + (KINDS[kind] ? kind : "note");
+      const who = (u && (u.target_label || u.target_id)) || "";
+      const bits = [kind];
+      if (who) bits.push(String(who));
+      if (u && u.severity) bits.push(String(u.severity));
+      if (u && u.count != null && u.count !== "") bits.push("x" + u.count);
+      chip.textContent = bits.join(" ");
+      box.appendChild(chip);
+    }
+  }
+
+  function showChanges(changes) {
+    const list = $("changes");
+    list.replaceChildren();
+    const lines = (changes || []).map(changeText).map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) {
+      const li = document.createElement("li");
+      li.textContent = "Logged. No map changes.";
+      list.appendChild(li);
+      return;
+    }
+    for (const line of lines) {
+      const li = document.createElement("li");
+      li.textContent = line;
+      list.appendChild(li);
+    }
+  }
+
+  function showReport(data) {
+    const report = data && data.report && typeof data.report === "object" ? data.report : {};
+    const text = report.text || (data && data.text) || "";
+    const updates = Array.isArray(report.updates) ? report.updates : (data && Array.isArray(data.updates) ? data.updates : []);
+    const changes = Array.isArray(data && data.changes) ? data.changes : (Array.isArray(report.changes) ? report.changes : []);
+    $("transcript").textContent = text || "(no words)";
+    showChips(updates);
+    showChanges(changes);
+    const read = (data && data.confirmation) || "";
+    const back = $("readback");
+    if (read) {
+      back.hidden = false;
+      back.textContent = read;
+      speak(read);
+    } else {
+      back.hidden = true;
+      back.textContent = "";
+    }
+    setError("");
+    setNote("");
+    const box = $("result");
+    if (box.scrollIntoView) box.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+
+  const SILENT_WAV = "data:audio/wav;base64,UklGRmQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
+  function ttsEl() {
+    if (!audioEl) audioEl = new Audio();
+    return audioEl;
+  }
+
+  function unlockAudio() {
+    const el = ttsEl();
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    try {
+      el.src = SILENT_WAV;
+      const played = el.play();
+      if (played && typeof played.catch === "function") played.catch(() => {});
+    } catch (e) {}
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) {
+        const u = new SpeechSynthesisUtterance(" ");
+        u.volume = 0;
+        synth.speak(u);
+      }
+    } catch (e) {}
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      ctx.resume();
+    } catch (e) {}
+  }
+
+  function synth(line, gen) {
+    try {
+      const speech = window.speechSynthesis;
+      if (!speech || gen !== speakGen) return;
+      const u = new SpeechSynthesisUtterance(line);
+      u.lang = "en-US";
+      u.rate = 1.15;
+      speech.speak(u);
+    } catch (e) {}
+  }
+
+  function speak(text) {
+    const line = String(text || "").trim();
+    if (!line) return;
+    const gen = ++speakGen;
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    playTts(line, gen);
+  }
+
+  async function playTts(line, gen) {
+    let url = "";
+    try {
+      const res = await fetch("/api/voice/tts?style=firefighter&text=" + encodeURIComponent(line), { cache: "no-store" });
+      if (gen !== speakGen) return;
+      if (!res.ok) { synth(line, gen); return; }
+      const blob = await res.blob();
+      if (gen !== speakGen) return;
+      const el = ttsEl();
+      url = URL.createObjectURL(blob);
+      el.src = url;
+      await el.play();
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        el.addEventListener("ended", finish, { once: true });
+        el.addEventListener("error", finish, { once: true });
+        setTimeout(finish, 20000);
+      });
+    } catch (e) {
+      if (gen === speakGen) synth(line, gen);
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function pickMime() {
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const list = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+    if (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === "function") {
+      for (const t of list) {
+        try { if (MediaRecorder.isTypeSupported(t)) return t; } catch (e) {}
+      }
+    }
+    return ios ? "audio/mp4" : "audio/webm;codecs=opus";
+  }
+
+  function stopTracks() {
+    if (!stream) return;
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+
+  async function startRec() {
+    if (sending || rec || hold) return;
+    unlockAudio();
+    hold = true;
+    const gen = ++recGen;
+    ptt.classList.add("hot");
+    ptt.setAttribute("aria-pressed", "true");
+    ptt.textContent = "RECORDING";
+    setNote("");
+    if (!window.isSecureContext) {
+      hold = false;
+      resetPtt();
+      setError("Mic needs HTTPS. Type the report instead.");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+      hold = false;
+      resetPtt();
+      setError("This phone cannot record. Type the report instead.");
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      if (gen !== recGen) return;
+      hold = false;
+      resetPtt();
+      setError("Mic blocked. Type the report instead.");
+      return;
+    }
+    if (gen !== recGen || !hold) {
+      stopTracks();
+      if (!hold) setNote("Hold again to talk.");
+      resetPtt();
+      return;
+    }
+    mime = pickMime();
+    try {
+      rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (e) {
+      try { rec = new MediaRecorder(stream); } catch (e2) {
+        stopTracks();
+        hold = false;
+        rec = null;
+        resetPtt();
+        setError("This phone cannot record. Type the report instead.");
+        return;
+      }
+    }
+    chunks = [];
+    rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    rec.onstop = () => {
+      const type = (rec && rec.mimeType) || mime || "audio/webm";
+      const blob = new Blob(chunks, { type: type });
+      chunks = [];
+      rec = null;
+      stopTracks();
+      hold = false;
+      if (blob.size < 80) {
+        resetPtt();
+        setNote("No audio. Hold to talk.");
+        return;
+      }
+      sendAudio(blob);
+    };
+    try {
+      rec.start();
+    } catch (e) {
+      rec = null;
+      stopTracks();
+      hold = false;
+      resetPtt();
+      setError("This phone cannot record. Type the report instead.");
+    }
+  }
+
+  function stopRec() {
+    const was = hold;
+    hold = false;
+    if (rec && rec.state !== "inactive") {
+      try { rec.stop(); } catch (e) { rec = null; stopTracks(); resetPtt(); }
+      return;
+    }
+    if (!rec && was) {
+      recGen += 1;
+      resetPtt();
+    }
+  }
+
+  async function sendAudio(blob) {
+    if (sending) return;
+    sending = true;
+    resetPtt();
+    setError("");
+    try {
+      const type = blob.type || "audio/webm";
+      const name = type.indexOf("mp4") >= 0 ? "report.mp4" : "report.webm";
+      const fd = new FormData();
+      fd.append("audio", blob, name);
+      fd.append("by", unitName());
+      const res = await fetch("/api/reports/audio", { method: "POST", body: fd });
+      const data = await readBody(res);
+      if (res.status === 503) { setError(STT_MSG); return; }
+      if (!res.ok) { setError(detailOf(data) || "Send failed. Try again."); return; }
+      showReport(data);
+      refresh();
+    } catch (e) {
+      setError("Send failed. Try again.");
+    } finally {
+      sending = false;
+      resetPtt();
+    }
+  }
+
+  async function sendText(text) {
+    unlockAudio();
+    const line = String(text || "").replace(/\s+/g, " ").trim();
+    if (!line) { setError("Type a report first."); return; }
+    if (sending) return;
+    sending = true;
+    $("btnSend").disabled = true;
+    setError("");
+    try {
+      const res = await fetch("/api/reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: line, by: unitName() }),
+      });
+      const data = await readBody(res);
+      if (!res.ok) { setError(detailOf(data) || "Send failed. Try again."); return; }
+      showReport(data);
+      if (line === ($("reportText").value || "").replace(/\s+/g, " ").trim()) $("reportText").value = "";
+      refresh();
+    } catch (e) {
+      setError("Send failed. Try again.");
+    } finally {
+      sending = false;
+      $("btnSend").disabled = false;
+      resetPtt();
+    }
+  }
+
+  async function undo() {
+    if (sending) return;
+    sending = true;
+    $("btnUndo").disabled = true;
+    setError("");
+    try {
+      const res = await fetch("/api/reports/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const data = await readBody(res);
+      if (!res.ok || (data && data.ok === false)) {
+        setError(detailOf(data) || "Nothing to undo.");
+        return;
+      }
+      const changes = data && Array.isArray(data.changes) ? data.changes : [];
+      $("transcript").textContent = "Undo last.";
+      $("chips").replaceChildren();
+      showChanges(changes);
+      const back = $("readback");
+      const line = changes.map(changeText).map((s) => s.trim()).filter(Boolean).join(" ");
+      back.hidden = false;
+      back.textContent = line || "Undone.";
+      setNote("");
+      refresh();
+    } catch (e) {
+      setError("Undo failed. Try again.");
+    } finally {
+      sending = false;
+      $("btnUndo").disabled = false;
+    }
+  }
+
+  function searchedIds() {
+    const ids = new Set();
+    if (!searched || typeof searched !== "object") return ids;
+    for (const key of Object.keys(searched)) {
+      if (key !== "unsearched") ids.add(key);
+    }
+    return ids;
+  }
+
+  function asRoom(item) {
+    if (typeof item === "string") return { id: item, label: item, level: null, type: "" };
+    if (!item || typeof item !== "object") return null;
+    const id = item.id || item.room_id || "";
+    const label = item.label || item.name || id || "Room";
+    const level = item.level != null ? item.level : item.floor;
+    return { id: String(id), label: String(label), level: level, type: String(item.type || "").toLowerCase() };
+  }
+
+  function deriveUnsearched(done) {
+    const out = [];
+    for (const fl of (building && building.floors) || []) {
+      for (const s of fl.spaces || []) {
+        if (!s) continue;
+        const type = String(s.type || "").toLowerCase();
+        if (SKIP[type]) continue;
+        if (s.id && done.has(String(s.id))) continue;
+        out.push({ id: String(s.id || ""), label: String(s.label || s.id || "Room"), level: fl.level, type: type });
+      }
+    }
+    return out;
+  }
+
+  function collectUnsearched() {
+    const done = searchedIds();
+    let items;
+    if (searched && Array.isArray(searched.unsearched)) items = searched.unsearched.map(asRoom).filter(Boolean);
+    else if (building) items = deriveUnsearched(done);
+    else items = [];
+    return items.filter((r) => r && !SKIP[r.type] && (!r.id || !done.has(r.id)));
+  }
+
+  function renderSearch() {
+    const host = $("searchList");
+    if (!searched && !building) {
+      host.replaceChildren();
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "Loading search list.";
+      host.appendChild(p);
+      return;
+    }
+    const rooms = collectUnsearched();
+    rooms.sort((a, b) => {
+      const da = num(a.level), db = num(b.level);
+      const aOk = Number.isFinite(da), bOk = Number.isFinite(db);
+      if (aOk !== bOk) return aOk ? -1 : 1;
+      if (aOk && da !== db) return da - db;
+      return String(a.label).localeCompare(String(b.label), undefined, { numeric: true });
+    });
+    const sig = rooms.map((r) => [r.level, r.id, r.label].join(":")).join("|");
+    $("searchTitle").textContent = rooms.length ? "Unsearched " + rooms.length : "Unsearched";
+    if (sig === searchSig && host.childElementCount) return;
+    searchSig = sig;
+    host.replaceChildren();
+    if (!rooms.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "All rooms searched.";
+      host.appendChild(p);
+      return;
+    }
+    let last = "\0";
+    for (const room of rooms) {
+      const key = Number.isFinite(num(room.level)) ? String(num(room.level)) : "?";
+      if (key !== last) {
+        last = key;
+        const h = document.createElement("p");
+        h.className = "floor-h";
+        h.textContent = "FLOOR " + key;
+        host.appendChild(h);
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "room";
+      btn.dataset.report = "Room " + String(room.label || room.id || "room").replace(/\s+/g, " ").trim() + " searched";
+      btn.textContent = room.label || room.id || "Room";
+      host.appendChild(btn);
+    }
+  }
+
+  function renderFeed() {
+    const host = $("feed");
+    const items = reports.slice().sort((a, b) => num(b && b.t) - num(a && a.t));
+    const sig = items.map((r) => String(r && r.id) + ":" + String(r && r.t) + ":" + String(r && r.text)).join("|");
+    if (sig === feedSig && host.childElementCount) return;
+    feedSig = sig;
+    host.replaceChildren();
+    if (!items.length) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.textContent = "No field reports yet.";
+      host.appendChild(p);
+      return;
+    }
+    for (const rep of items) {
+      const card = document.createElement("article");
+      card.className = "feed-item";
+      const who = document.createElement("b");
+      const when = fmtTime(rep && rep.t);
+      who.textContent = [when, (rep && rep.by) || "Unit"].filter(Boolean).join("  ");
+      const text = document.createElement("p");
+      text.textContent = (rep && rep.text) || "(no words)";
+      card.appendChild(who);
+      card.appendChild(text);
+      const changes = rep && Array.isArray(rep.changes) ? rep.changes.map(changeText).filter(Boolean) : [];
+      if (changes.length) {
+        const extra = document.createElement("p");
+        extra.className = "muted";
+        extra.textContent = changes.join(" ");
+        card.appendChild(extra);
+      }
+      host.appendChild(card);
+    }
+  }
+
+  function floorLevels() {
+    const levels = [];
+    const seen = new Set();
+    const add = (lv) => {
+      const n = num(lv);
+      if (!Number.isFinite(n) || seen.has(n)) return;
+      seen.add(n);
+      levels.push(n);
+    };
+    for (const fl of (building && building.floors) || []) add(fl.level);
+    if (!levels.length && building && building.grid && Array.isArray(building.grid.levels)) {
+      for (const lv of building.grid.levels) add(lv);
+    }
+    levels.sort((a, b) => a - b);
+    return levels;
+  }
+
+  function floorByLevel(level) {
+    return ((building && building.floors) || []).find((f) => num(f.level) === num(level)) || null;
+  }
+
+  function pickInitialFloor() {
+    const levels = floorLevels();
+    if (!levels.length) return null;
+    for (const lv of levels) {
+      if (bag(state.fire, lv).length || bag(state.smoke, lv).length) return lv;
+      const fl = floorByLevel(lv);
+      const rooms = state.rooms || {};
+      if (fl) {
+        for (const s of fl.spaces || []) {
+          const st = rooms[s.id];
+          if (st === "fire" || st === "smoke") return lv;
+        }
+      }
+    }
+    return levels[0];
+  }
+
+  function renderFloors() {
+    const levels = floorLevels();
+    if (currentLevel == null || levels.indexOf(num(currentLevel)) < 0) currentLevel = levels[0] != null ? levels[0] : null;
+    const sig = levels.join(",");
+    const host = $("floors");
+    if (sig !== floorSig) {
+      floorSig = sig;
+      host.replaceChildren();
+      for (const lv of levels) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.dataset.level = String(lv);
+        btn.textContent = "Floor " + lv;
+        host.appendChild(btn);
+      }
+    }
+    for (const btn of host.querySelectorAll("button")) {
+      const on = num(btn.dataset.level) === num(currentLevel);
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  function floorBounds(fl) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const add = (x, y) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    };
+    if (fl) {
+      for (const p of fl.outline || []) { const q = asPoint(p); add(q[0], q[1]); }
+      for (const w of fl.walls || []) { add(num(w.x1), num(w.y1)); add(num(w.x2), num(w.y2)); }
+      for (const s of fl.spaces || []) for (const p of s.polygon || []) { const q = asPoint(p); add(q[0], q[1]); }
+    }
+    for (const v of (building && building.vertical_connections) || []) {
+      if (!serves(v, currentLevel)) continue;
+      const q = verticalPoint(v, currentLevel);
+      add(q[0], q[1]);
+    }
+    if (!Number.isFinite(minX) && building && building.grid) {
+      const g = building.grid;
+      const cell = num(g.cell) || 0.5;
+      return {
+        minX: num(g.origin_x) || 0,
+        minY: num(g.origin_y) || 0,
+        maxX: (num(g.origin_x) || 0) + (num(g.cols) || 1) * cell,
+        maxY: (num(g.origin_y) || 0) + (num(g.rows) || 1) * cell,
+      };
+    }
+    if (!Number.isFinite(minX)) return { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+    const pad = Math.max(0.8, (maxX - minX) * 0.04, (maxY - minY) * 0.04);
+    return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+  }
+
+  function viewOf(w, h, b) {
+    const pad = 14;
+    const bw = Math.max(b.maxX - b.minX, 1e-6);
+    const bh = Math.max(b.maxY - b.minY, 1e-6);
+    const scale = Math.min(Math.max(w - pad * 2, 1) / bw, Math.max(h - pad * 2, 1) / bh);
+    const ox = (w - bw * scale) / 2;
+    const oy = (h - bh * scale) / 2;
+    return {
+      scale: scale,
+      X(x) { return ox + (x - b.minX) * scale; },
+      Y(y) { return oy + (y - b.minY) * scale; },
+    };
+  }
+
+  function trace(ctx, pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+  }
+
+  function serves(v, level) {
+    const floors = (v && v.floors) || [];
+    if (!floors.length) return true;
+    return floors.some((f) => num(f) === num(level));
+  }
+
+  function verticalPoint(v, level) {
+    const pos = (v && v.positions) || {};
+    const pt = pos[level] != null ? pos[level] : pos[String(level)];
+    if (pt != null) {
+      const q = asPoint(pt);
+      if (Number.isFinite(q[0]) && Number.isFinite(q[1])) return q;
+    }
+    return [num(v && v.x), num(v && v.y)];
+  }
+
+  function vertStatus(id) {
+    const bagV = state.verticals || {};
+    const raw = bagV[id] != null ? bagV[id] : bagV[String(id)];
+    if (raw && typeof raw === "object") {
+      if (raw.blocked === true || String(raw.status || raw.state || "") === "blocked") return "blocked";
+      return String(raw.status || raw.state || "clear");
+    }
+    return raw == null ? "clear" : String(raw);
+  }
+
+  function paintLabel(ctx, text, x, y, w) {
+    ctx.font = "700 13px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const tw = ctx.measureText(text).width;
+    const boxW = tw + 10;
+    let left = x - boxW / 2;
+    if (left < 4) left = 4;
+    if (left + boxW > w - 4) left = Math.max(4, w - 4 - boxW);
+    const top = Math.max(4, y - 10);
+    ctx.fillStyle = "rgba(8,10,14,0.92)";
+    ctx.fillRect(left, top, boxW, 20);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(text, left + boxW / 2, top + 10);
+  }
+
+  function fitCanvas(canvas) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w < 2 || h < 2) return null;
+    const bw = Math.round(w * dpr);
+    const bh = Math.round(h * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw;
+      canvas.height = bh;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: w, h: h };
+  }
+
+  function cellRC(cell) {
+    if (Array.isArray(cell)) return [num(cell[0]), num(cell[1])];
+    if (cell && typeof cell === "object") return [num(cell.r != null ? cell.r : cell.row), num(cell.c != null ? cell.c : cell.col)];
+    return [NaN, NaN];
+  }
+
+  function drawMap() {
+    const canvas = $("map");
+    const fitted = fitCanvas(canvas);
+    if (!fitted) return;
+    const ctx = fitted.ctx;
+    const w = fitted.w;
+    const h = fitted.h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0e1116";
+    ctx.fillRect(0, 0, w, h);
+    if (!building) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "700 18px system-ui, sans-serif";
+      ctx.fillText("No building loaded.", 16, 32);
+      return;
+    }
+    const fl = floorByLevel(currentLevel);
+    const b = floorBounds(fl);
+    const view = viewOf(w, h, b);
+    const done = searchedIds();
+    const rooms = state.rooms || {};
+
+    if (fl && fl.outline && fl.outline.length >= 3) {
+      const pts = fl.outline.map(asPoint).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length >= 3) {
+        trace(ctx, pts.map((p) => [view.X(p[0]), view.Y(p[1])]));
+        ctx.fillStyle = "#161b22";
+        ctx.fill();
+      }
+    }
+
+    for (const s of (fl && fl.spaces) || []) {
+      const poly = (s.polygon || []).map(asPoint).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (poly.length < 3) continue;
+      trace(ctx, poly.map((p) => [view.X(p[0]), view.Y(p[1])]));
+      const rst = rooms[s.id] || "clear";
+      const isDone = !!(s.id && done.has(String(s.id)));
+      if (rst === "fire") ctx.fillStyle = "#ff4d3d";
+      else if (rst === "smoke") ctx.fillStyle = "rgba(240,193,74,0.9)";
+      else if (isDone) ctx.fillStyle = "#3fb950";
+      else ctx.fillStyle = "rgba(255,255,255,0.05)";
+      ctx.fill();
+      if (isDone && (rst === "fire" || rst === "smoke")) {
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#3fb950";
+        ctx.stroke();
+      }
+    }
+
+    ctx.beginPath();
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    for (const wall of (fl && fl.walls) || []) {
+      const x1 = num(wall.x1), y1 = num(wall.y1), x2 = num(wall.x2), y2 = num(wall.y2);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+      ctx.moveTo(view.X(x1), view.Y(y1));
+      ctx.lineTo(view.X(x2), view.Y(y2));
+    }
+    ctx.stroke();
+
+    if (fl && fl.outline && fl.outline.length >= 2) {
+      const pts = fl.outline.map(asPoint).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length >= 2) {
+        ctx.beginPath();
+        ctx.moveTo(view.X(pts[0][0]), view.Y(pts[0][1]));
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(view.X(pts[i][0]), view.Y(pts[i][1]));
+        ctx.closePath();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
+    }
+
+    const grid = building.grid;
+    const cell = grid ? num(grid.cell) : NaN;
+    if (grid && cell > 0) {
+      const ox = num(grid.origin_x) || 0;
+      const oy = num(grid.origin_y) || 0;
+      const side = Math.max(1.5, cell * view.scale);
+      ctx.fillStyle = "rgba(240,193,74,0.55)";
+      for (const raw of bag(state.smoke, currentLevel)) {
+        const rc = cellRC(raw);
+        if (!Number.isFinite(rc[0]) || !Number.isFinite(rc[1])) continue;
+        ctx.fillRect(view.X(ox + rc[1] * cell), view.Y(oy + rc[0] * cell), side, side);
+      }
+      ctx.fillStyle = "#ff4d3d";
+      for (const raw of bag(state.fire, currentLevel)) {
+        const rc = cellRC(raw);
+        if (!Number.isFinite(rc[0]) || !Number.isFinite(rc[1])) continue;
+        ctx.fillRect(view.X(ox + rc[1] * cell), view.Y(oy + rc[0] * cell), side, side);
+      }
+    }
+
+    for (const v of building.vertical_connections || []) {
+      if (!serves(v, currentLevel)) continue;
+      const status = vertStatus(v.id);
+      const q = verticalPoint(v, currentLevel);
+      if (!Number.isFinite(q[0]) || !Number.isFinite(q[1])) continue;
+      const px = view.X(q[0]);
+      const py = view.Y(q[1]);
+      ctx.beginPath();
+      ctx.moveTo(px, py - 12);
+      ctx.lineTo(px + 12, py);
+      ctx.lineTo(px, py + 12);
+      ctx.lineTo(px - 12, py);
+      ctx.closePath();
+      if (status === "blocked" || status === "fire") ctx.fillStyle = "#ff4d3d";
+      else if (status === "smoke") ctx.fillStyle = "#f0c14a";
+      else ctx.fillStyle = "#0e1116";
+      ctx.fill();
+      ctx.lineWidth = status === "blocked" ? 3 : 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      if (status === "blocked") {
+        ctx.beginPath();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#ffffff";
+        ctx.moveTo(px - 6, py - 6);
+        ctx.lineTo(px + 6, py + 6);
+        ctx.moveTo(px + 6, py - 6);
+        ctx.lineTo(px - 6, py + 6);
+        ctx.stroke();
+        paintLabel(ctx, (v.name || v.id || "Stairs") + " BLOCKED", px, py - 22, w);
+      } else if (status === "fire" || status === "smoke") {
+        paintLabel(ctx, (v.name || v.id || "Stairs") + " " + status.toUpperCase(), px, py - 22, w);
+      }
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 16px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText("Floor " + (currentLevel == null ? "" : currentLevel), 10, 22);
+  }
+
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
+    try {
+      const wantBuilding = Date.now() >= nextBuilding;
+      const pack = await Promise.all([
+        wantBuilding ? getJSON("/api/building") : Promise.resolve(undefined),
+        getJSON("/api/state"),
+        getJSON("/api/reports"),
+        getJSON("/api/reports/searched"),
+      ]);
+      let live = false;
+      if (pack[0]) {
+        building = pack[0];
+        nextBuilding = Date.now() + 15000;
+        const name = building.building || "Firefighter";
+        $("title").textContent = name;
+        live = true;
+      } else if (pack[0] === null) {
+        nextBuilding = 0;
+      }
+      if (pack[1]) { state = pack[1]; live = true; }
+      if (Array.isArray(pack[2])) { reports = pack[2]; live = true; renderFeed(); }
+      if (pack[3] && typeof pack[3] === "object") { searched = pack[3]; live = true; }
+      if (!userPicked) currentLevel = pickInitialFloor();
+      renderFloors();
+      renderSearch();
+      drawMap();
+      if (live || building) setLink(!!(pack[1] || building));
+      else setLink(false);
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  ptt.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    try { ptt.setPointerCapture(e.pointerId); } catch (err) {}
+    startRec();
+  });
+  ptt.addEventListener("pointerup", (e) => { e.preventDefault(); stopRec(); });
+  ptt.addEventListener("pointercancel", () => stopRec());
+  ptt.addEventListener("contextmenu", (e) => e.preventDefault());
+  ptt.addEventListener("keydown", (e) => {
+    if (e.repeat) return;
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); startRec(); }
+  });
+  ptt.addEventListener("keyup", (e) => {
+    if (e.key === " " || e.key === "Enter") { e.preventDefault(); stopRec(); }
+  });
+
+  $("btnSend").addEventListener("click", () => sendText($("reportText").value));
+  $("btnUndo").addEventListener("click", () => undo());
+  $("searchList").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-report]");
+    if (!btn || sending) return;
+    sendText(btn.dataset.report);
+  });
+  $("floors").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-level]");
+    if (!btn) return;
+    currentLevel = num(btn.dataset.level);
+    userPicked = true;
+    renderFloors();
+    drawMap();
+  });
+  $("reportText").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      sendText($("reportText").value);
+    }
+  });
+
+  if (window.ResizeObserver) new ResizeObserver(() => drawMap()).observe($("map"));
+  window.addEventListener("resize", () => drawMap());
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script>
+</body>
+</html>

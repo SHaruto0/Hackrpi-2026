@@ -1,0 +1,1965 @@
+{
+  "building": "Sample Hall (synthetic)",
+  "units": "meters",
+  "scale_method": "synthetic",
+  "floor_height_m": 4.0,
+  "floors": [
+    {
+      "level": 1,
+      "alignment": {
+        "offset_x": 0,
+        "offset_y": 0,
+        "rotation_deg": 0
+      },
+      "outline": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          24
+        ],
+        [
+          0,
+          24
+        ]
+      ],
+      "walls": [
+        {
+          "id": "F1-W0",
+          "x1": 0,
+          "y1": 0,
+          "x2": 40,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W1",
+          "x1": 40,
+          "y1": 0,
+          "x2": 40,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W2",
+          "x1": 40,
+          "y1": 24,
+          "x2": 0,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W3",
+          "x1": 0,
+          "y1": 24,
+          "x2": 0,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W4",
+          "x1": 0,
+          "y1": 10,
+          "x2": 40,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W5",
+          "x1": 0,
+          "y1": 14,
+          "x2": 40,
+          "y2": 14,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W6",
+          "x1": 4,
+          "y1": 0,
+          "x2": 4,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W7",
+          "x1": 12,
+          "y1": 0,
+          "x2": 12,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W8",
+          "x1": 20,
+          "y1": 0,
+          "x2": 20,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W9",
+          "x1": 28,
+          "y1": 0,
+          "x2": 28,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W10",
+          "x1": 36,
+          "y1": 0,
+          "x2": 36,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W11",
+          "x1": 8,
+          "y1": 14,
+          "x2": 8,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W12",
+          "x1": 16,
+          "y1": 14,
+          "x2": 16,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W13",
+          "x1": 20,
+          "y1": 14,
+          "x2": 20,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W14",
+          "x1": 28,
+          "y1": 14,
+          "x2": 28,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-W15",
+          "x1": 36,
+          "y1": 14,
+          "x2": 36,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        }
+      ],
+      "spaces": [
+        {
+          "id": "F1-WestStairs",
+          "label": "West Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              4,
+              10
+            ],
+            [
+              0,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-102",
+          "label": "102",
+          "type": "classroom",
+          "polygon": [
+            [
+              4,
+              0
+            ],
+            [
+              12,
+              0
+            ],
+            [
+              12,
+              10
+            ],
+            [
+              4,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-103",
+          "label": "103",
+          "type": "office",
+          "polygon": [
+            [
+              12,
+              0
+            ],
+            [
+              20,
+              0
+            ],
+            [
+              20,
+              10
+            ],
+            [
+              12,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-104",
+          "label": "104",
+          "type": "classroom",
+          "polygon": [
+            [
+              20,
+              0
+            ],
+            [
+              28,
+              0
+            ],
+            [
+              28,
+              10
+            ],
+            [
+              20,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-105",
+          "label": "105",
+          "type": "classroom",
+          "polygon": [
+            [
+              28,
+              0
+            ],
+            [
+              36,
+              0
+            ],
+            [
+              36,
+              10
+            ],
+            [
+              28,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-Restroom",
+          "label": "Restroom",
+          "type": "restroom",
+          "polygon": [
+            [
+              36,
+              0
+            ],
+            [
+              40,
+              0
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              36,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-107",
+          "label": "107",
+          "type": "classroom",
+          "polygon": [
+            [
+              0,
+              14
+            ],
+            [
+              8,
+              14
+            ],
+            [
+              8,
+              24
+            ],
+            [
+              0,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-108",
+          "label": "108",
+          "type": "office",
+          "polygon": [
+            [
+              8,
+              14
+            ],
+            [
+              16,
+              14
+            ],
+            [
+              16,
+              24
+            ],
+            [
+              8,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-Elevator",
+          "label": "Elevator",
+          "type": "elevator",
+          "polygon": [
+            [
+              16,
+              14
+            ],
+            [
+              20,
+              14
+            ],
+            [
+              20,
+              24
+            ],
+            [
+              16,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-110",
+          "label": "110",
+          "type": "classroom",
+          "polygon": [
+            [
+              20,
+              14
+            ],
+            [
+              28,
+              14
+            ],
+            [
+              28,
+              24
+            ],
+            [
+              20,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-111",
+          "label": "111",
+          "type": "storage",
+          "polygon": [
+            [
+              28,
+              14
+            ],
+            [
+              36,
+              14
+            ],
+            [
+              36,
+              24
+            ],
+            [
+              28,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-EastStairs",
+          "label": "East Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              36,
+              14
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              40,
+              24
+            ],
+            [
+              36,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-HALL",
+          "label": "Hall 1",
+          "type": "hallway",
+          "polygon": [
+            [
+              0,
+              10
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              0,
+              14
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.95
+        }
+      ],
+      "doors": [
+        {
+          "id": "F1-D-WestStairs",
+          "x": 2.0,
+          "y": 10,
+          "width": 1.8,
+          "connects": [
+            "F1-WestStairs",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-102",
+          "x": 8.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F1-102",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-103",
+          "x": 16.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F1-103",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-104",
+          "x": 24.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F1-104",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-105",
+          "x": 32.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F1-105",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-Restroom",
+          "x": 38.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F1-Restroom",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-107",
+          "x": 4.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F1-107",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-108",
+          "x": 12.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F1-108",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-Elevator",
+          "x": 18.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F1-Elevator",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-110",
+          "x": 24.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F1-110",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-111",
+          "x": 32.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F1-111",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F1-D-EastStairs",
+          "x": 38.0,
+          "y": 14,
+          "width": 1.8,
+          "connects": [
+            "F1-EastStairs",
+            "F1-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "EXIT-WEST",
+          "x": 0,
+          "y": 12,
+          "width": 1.8,
+          "connects": [
+            "F1-HALL"
+          ],
+          "exterior_exit": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "EXIT-EAST",
+          "x": 40,
+          "y": 12,
+          "width": 1.8,
+          "connects": [
+            "F1-HALL"
+          ],
+          "exterior_exit": true,
+          "confidence": 0.95
+        }
+      ],
+      "notes": "synthetic sample"
+    },
+    {
+      "level": 2,
+      "alignment": {
+        "offset_x": 0,
+        "offset_y": 0,
+        "rotation_deg": 0
+      },
+      "outline": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          24
+        ],
+        [
+          0,
+          24
+        ]
+      ],
+      "walls": [
+        {
+          "id": "F2-W0",
+          "x1": 0,
+          "y1": 0,
+          "x2": 40,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W1",
+          "x1": 40,
+          "y1": 0,
+          "x2": 40,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W2",
+          "x1": 40,
+          "y1": 24,
+          "x2": 0,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W3",
+          "x1": 0,
+          "y1": 24,
+          "x2": 0,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W4",
+          "x1": 0,
+          "y1": 10,
+          "x2": 40,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W5",
+          "x1": 0,
+          "y1": 14,
+          "x2": 40,
+          "y2": 14,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W6",
+          "x1": 4,
+          "y1": 0,
+          "x2": 4,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W7",
+          "x1": 12,
+          "y1": 0,
+          "x2": 12,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W8",
+          "x1": 20,
+          "y1": 0,
+          "x2": 20,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W9",
+          "x1": 28,
+          "y1": 0,
+          "x2": 28,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W10",
+          "x1": 36,
+          "y1": 0,
+          "x2": 36,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W11",
+          "x1": 8,
+          "y1": 14,
+          "x2": 8,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W12",
+          "x1": 16,
+          "y1": 14,
+          "x2": 16,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W13",
+          "x1": 20,
+          "y1": 14,
+          "x2": 20,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W14",
+          "x1": 28,
+          "y1": 14,
+          "x2": 28,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-W15",
+          "x1": 36,
+          "y1": 14,
+          "x2": 36,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        }
+      ],
+      "spaces": [
+        {
+          "id": "F2-WestStairs",
+          "label": "West Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              4,
+              10
+            ],
+            [
+              0,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-202",
+          "label": "202",
+          "type": "classroom",
+          "polygon": [
+            [
+              4,
+              0
+            ],
+            [
+              12,
+              0
+            ],
+            [
+              12,
+              10
+            ],
+            [
+              4,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-203",
+          "label": "203",
+          "type": "office",
+          "polygon": [
+            [
+              12,
+              0
+            ],
+            [
+              20,
+              0
+            ],
+            [
+              20,
+              10
+            ],
+            [
+              12,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-204",
+          "label": "204",
+          "type": "classroom",
+          "polygon": [
+            [
+              20,
+              0
+            ],
+            [
+              28,
+              0
+            ],
+            [
+              28,
+              10
+            ],
+            [
+              20,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-205",
+          "label": "205",
+          "type": "classroom",
+          "polygon": [
+            [
+              28,
+              0
+            ],
+            [
+              36,
+              0
+            ],
+            [
+              36,
+              10
+            ],
+            [
+              28,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-Restroom",
+          "label": "Restroom",
+          "type": "restroom",
+          "polygon": [
+            [
+              36,
+              0
+            ],
+            [
+              40,
+              0
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              36,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-207",
+          "label": "207",
+          "type": "classroom",
+          "polygon": [
+            [
+              0,
+              14
+            ],
+            [
+              8,
+              14
+            ],
+            [
+              8,
+              24
+            ],
+            [
+              0,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-208",
+          "label": "208",
+          "type": "office",
+          "polygon": [
+            [
+              8,
+              14
+            ],
+            [
+              16,
+              14
+            ],
+            [
+              16,
+              24
+            ],
+            [
+              8,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-Elevator",
+          "label": "Elevator",
+          "type": "elevator",
+          "polygon": [
+            [
+              16,
+              14
+            ],
+            [
+              20,
+              14
+            ],
+            [
+              20,
+              24
+            ],
+            [
+              16,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-210",
+          "label": "210",
+          "type": "classroom",
+          "polygon": [
+            [
+              20,
+              14
+            ],
+            [
+              28,
+              14
+            ],
+            [
+              28,
+              24
+            ],
+            [
+              20,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-211",
+          "label": "211",
+          "type": "storage",
+          "polygon": [
+            [
+              28,
+              14
+            ],
+            [
+              36,
+              14
+            ],
+            [
+              36,
+              24
+            ],
+            [
+              28,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-EastStairs",
+          "label": "East Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              36,
+              14
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              40,
+              24
+            ],
+            [
+              36,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-HALL",
+          "label": "Hall 2",
+          "type": "hallway",
+          "polygon": [
+            [
+              0,
+              10
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              0,
+              14
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.95
+        }
+      ],
+      "doors": [
+        {
+          "id": "F2-D-WestStairs",
+          "x": 2.0,
+          "y": 10,
+          "width": 1.8,
+          "connects": [
+            "F2-WestStairs",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-202",
+          "x": 8.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F2-202",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-203",
+          "x": 16.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F2-203",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-204",
+          "x": 24.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F2-204",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-205",
+          "x": 32.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F2-205",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-Restroom",
+          "x": 38.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F2-Restroom",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-207",
+          "x": 4.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F2-207",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-208",
+          "x": 12.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F2-208",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-Elevator",
+          "x": 18.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F2-Elevator",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-210",
+          "x": 24.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F2-210",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-211",
+          "x": 32.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F2-211",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F2-D-EastStairs",
+          "x": 38.0,
+          "y": 14,
+          "width": 1.8,
+          "connects": [
+            "F2-EastStairs",
+            "F2-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        }
+      ],
+      "notes": "synthetic sample"
+    },
+    {
+      "level": 3,
+      "alignment": {
+        "offset_x": 0,
+        "offset_y": 0,
+        "rotation_deg": 0
+      },
+      "outline": [
+        [
+          0,
+          0
+        ],
+        [
+          40,
+          0
+        ],
+        [
+          40,
+          24
+        ],
+        [
+          0,
+          24
+        ]
+      ],
+      "walls": [
+        {
+          "id": "F3-W0",
+          "x1": 0,
+          "y1": 0,
+          "x2": 40,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W1",
+          "x1": 40,
+          "y1": 0,
+          "x2": 40,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W2",
+          "x1": 40,
+          "y1": 24,
+          "x2": 0,
+          "y2": 24,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W3",
+          "x1": 0,
+          "y1": 24,
+          "x2": 0,
+          "y2": 0,
+          "exterior": true,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W4",
+          "x1": 0,
+          "y1": 10,
+          "x2": 40,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W5",
+          "x1": 0,
+          "y1": 14,
+          "x2": 40,
+          "y2": 14,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W6",
+          "x1": 4,
+          "y1": 0,
+          "x2": 4,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W7",
+          "x1": 12,
+          "y1": 0,
+          "x2": 12,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W8",
+          "x1": 20,
+          "y1": 0,
+          "x2": 20,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W9",
+          "x1": 36,
+          "y1": 0,
+          "x2": 36,
+          "y2": 10,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W10",
+          "x1": 8,
+          "y1": 14,
+          "x2": 8,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W11",
+          "x1": 16,
+          "y1": 14,
+          "x2": 16,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W12",
+          "x1": 20,
+          "y1": 14,
+          "x2": 20,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W13",
+          "x1": 28,
+          "y1": 14,
+          "x2": 28,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-W14",
+          "x1": 36,
+          "y1": 14,
+          "x2": 36,
+          "y2": 24,
+          "exterior": false,
+          "confidence": 0.9
+        }
+      ],
+      "spaces": [
+        {
+          "id": "F3-WestStairs",
+          "label": "West Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              0,
+              0
+            ],
+            [
+              4,
+              0
+            ],
+            [
+              4,
+              10
+            ],
+            [
+              0,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-302",
+          "label": "302",
+          "type": "classroom",
+          "polygon": [
+            [
+              4,
+              0
+            ],
+            [
+              12,
+              0
+            ],
+            [
+              12,
+              10
+            ],
+            [
+              4,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-303",
+          "label": "303",
+          "type": "office",
+          "polygon": [
+            [
+              12,
+              0
+            ],
+            [
+              20,
+              0
+            ],
+            [
+              20,
+              10
+            ],
+            [
+              12,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-LectureHall3A",
+          "label": "Lecture Hall 3A",
+          "type": "lecture_hall",
+          "polygon": [
+            [
+              20,
+              0
+            ],
+            [
+              36,
+              0
+            ],
+            [
+              36,
+              10
+            ],
+            [
+              20,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-Restroom",
+          "label": "Restroom",
+          "type": "restroom",
+          "polygon": [
+            [
+              36,
+              0
+            ],
+            [
+              40,
+              0
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              36,
+              10
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-306",
+          "label": "306",
+          "type": "classroom",
+          "polygon": [
+            [
+              0,
+              14
+            ],
+            [
+              8,
+              14
+            ],
+            [
+              8,
+              24
+            ],
+            [
+              0,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-307",
+          "label": "307",
+          "type": "office",
+          "polygon": [
+            [
+              8,
+              14
+            ],
+            [
+              16,
+              14
+            ],
+            [
+              16,
+              24
+            ],
+            [
+              8,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-Elevator",
+          "label": "Elevator",
+          "type": "elevator",
+          "polygon": [
+            [
+              16,
+              14
+            ],
+            [
+              20,
+              14
+            ],
+            [
+              20,
+              24
+            ],
+            [
+              16,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-309",
+          "label": "309",
+          "type": "classroom",
+          "polygon": [
+            [
+              20,
+              14
+            ],
+            [
+              28,
+              14
+            ],
+            [
+              28,
+              24
+            ],
+            [
+              20,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-310",
+          "label": "310",
+          "type": "storage",
+          "polygon": [
+            [
+              28,
+              14
+            ],
+            [
+              36,
+              14
+            ],
+            [
+              36,
+              24
+            ],
+            [
+              28,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-EastStairs",
+          "label": "East Stairs",
+          "type": "stairwell",
+          "polygon": [
+            [
+              36,
+              14
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              40,
+              24
+            ],
+            [
+              36,
+              24
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-HALL",
+          "label": "Hall 3",
+          "type": "hallway",
+          "polygon": [
+            [
+              0,
+              10
+            ],
+            [
+              40,
+              10
+            ],
+            [
+              40,
+              14
+            ],
+            [
+              0,
+              14
+            ]
+          ],
+          "multi_floor": false,
+          "confidence": 0.95
+        }
+      ],
+      "doors": [
+        {
+          "id": "F3-D-WestStairs",
+          "x": 2.0,
+          "y": 10,
+          "width": 1.8,
+          "connects": [
+            "F3-WestStairs",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-302",
+          "x": 8.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F3-302",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-303",
+          "x": 16.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F3-303",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-LectureHall3A",
+          "x": 28.0,
+          "y": 10,
+          "width": 1.8,
+          "connects": [
+            "F3-LectureHall3A",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-Restroom",
+          "x": 38.0,
+          "y": 10,
+          "width": 0.9,
+          "connects": [
+            "F3-Restroom",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-306",
+          "x": 4.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F3-306",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-307",
+          "x": 12.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F3-307",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-Elevator",
+          "x": 18.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F3-Elevator",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-309",
+          "x": 24.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F3-309",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-310",
+          "x": 32.0,
+          "y": 14,
+          "width": 0.9,
+          "connects": [
+            "F3-310",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        },
+        {
+          "id": "F3-D-EastStairs",
+          "x": 38.0,
+          "y": 14,
+          "width": 1.8,
+          "connects": [
+            "F3-EastStairs",
+            "F3-HALL"
+          ],
+          "exterior_exit": false,
+          "confidence": 0.85
+        }
+      ],
+      "notes": "synthetic sample"
+    }
+  ],
+  "vertical_connections": [
+    {
+      "id": "STAIR-WEST",
+      "name": "West Stairs",
+      "type": "stairs",
+      "x": 2,
+      "y": 5,
+      "floors": [
+        1,
+        2,
+        3
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "STAIR-EAST",
+      "name": "East Stairs",
+      "type": "stairs",
+      "x": 38,
+      "y": 19,
+      "floors": [
+        1,
+        2,
+        3
+      ],
+      "confidence": 0.95
+    },
+    {
+      "id": "ELEVATOR-1",
+      "name": "Elevator",
+      "type": "elevator",
+      "x": 18,
+      "y": 19,
+      "floors": [
+        1,
+        2,
+        3
+      ],
+      "confidence": 0.9
+    }
+  ],
+  "multi_floor_spaces": [],
+  "global_notes": "Synthetic test building, not DCC."
+}

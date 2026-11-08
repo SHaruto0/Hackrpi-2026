@@ -1,0 +1,20 @@
+Below is a building model JSON for these floor plan images, followed by problems an automatic
+validator found in it. Look at the images again and return the COMPLETE corrected JSON
+(same schema, every floor, every element), fixing every listed problem.
+
+Rules while fixing:
+- Keep existing ids when the element stays; only add or remove elements when the plan shows it.
+- Enclose rooms with wall segments along their edges; leave gaps only at doors.
+- Doors must lie on a wall line. Every non-hallway space needs at least one door.
+- Each stair/elevator point must be inside a stairwell/elevator space on every floor it serves.
+- The floor outline must contain every space on that floor.
+- Fix the real geometry. Never change a space's type or delete an element just to make a problem
+  go away (a stair stays a stairwell; link it to the right vertical_connection instead).
+- Do not move things that are not mentioned unless the image clearly shows they are wrong.
+- Return ONLY the JSON, no extra text.
+
+PROBLEMS:
+{ISSUES}
+
+CURRENT JSON:
+{JSON}

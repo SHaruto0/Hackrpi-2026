@@ -1,0 +1,2454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firesight editor</title>
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --text:#e6edf3; --muted:#8b949e;
+          --fire:#ff4d3d; --smoke:#d9a441; --safe:#3fb950; --route:#58a6ff; --accent:#1f6feb; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text);
+               font:13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; overflow:hidden; }
+  button, input, select, textarea { font:inherit; color:var(--text); background:#21262d;
+               border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  button { cursor:pointer; } button:hover { border-color:#8b949e; }
+  button.primary { background:var(--accent); border-color:var(--accent); }
+  button.warn { background:#da3633; border-color:#da3633; }
+  button.on { background:var(--accent); border-color:var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  textarea { width:100%; min-height:52px; resize:vertical; }
+  a { color:var(--route); }
+  #app { display:grid; grid-template-rows:auto 1fr auto; height:100%; }
+  header { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px;
+           background:var(--panel); border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; }
+  .sub { color:var(--muted); font-size:12px; }
+  .brand { margin-right:4px; }
+  .inline { display:flex; gap:6px; align-items:center; color:var(--muted); }
+  .grow { flex:1; }
+  #search { width:180px; }
+  #saveName { width:120px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:#6e7681; display:inline-block; }
+  .dot.on { background:var(--safe); }
+  #saveLabel { color:var(--muted); min-width:52px; }
+  #mid { display:grid; grid-template-columns:200px 1fr 300px; min-height:0; }
+  #tools, #inspector { overflow:auto; background:var(--panel); padding:10px; min-height:0; }
+  #tools { border-right:1px solid var(--line); }
+  #inspector { border-left:1px solid var(--line); }
+  #stage { position:relative; min-width:0; min-height:0; }
+  canvas { width:100%; height:100%; display:block; touch-action:none; background:var(--bg); }
+  #zoombar { position:absolute; right:10px; bottom:10px; display:flex; gap:6px; }
+  #status { display:flex; justify-content:space-between; gap:12px; padding:4px 10px;
+            background:var(--panel); border-top:1px solid var(--line); color:var(--muted); }
+  #statHint { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+  .tool { display:flex; width:100%; justify-content:space-between; margin:0 0 4px; }
+  .field { display:flex; flex-direction:column; gap:2px; margin:6px 0; }
+  .field > span, .check, .muted, .hint { color:var(--muted); }
+  .check { display:flex; gap:6px; align-items:center; margin:4px 0; }
+  .row2 { display:flex; gap:6px; }
+  .row2 .field { flex:1; min-width:0; }
+  .hint { font-size:12px; margin:8px 0 0; }
+  h2 { font-size:13px; margin:10px 0 4px; }
+  .actions { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  #issueBox { max-height:34vh; overflow:auto; margin-top:4px; }
+  button.issue { display:block; width:100%; text-align:left; background:transparent; border:0;
+                 color:var(--smoke); padding:3px 0; border-radius:0; }
+  button.issue:hover { color:var(--text); }
+  .issue.static { color:var(--smoke); padding:3px 0; }
+  #toast { position:fixed; left:50%; bottom:36px; transform:translateX(-50%); max-width:min(640px, 86vw);
+           background:#21262d; border:1px solid var(--line); border-radius:8px; padding:8px 12px; z-index:5; }
+  kbd { font:11px ui-monospace, Consolas, monospace; color:var(--muted); border:1px solid var(--line);
+        border-radius:4px; padding:0 4px; }
+  @media (max-width: 980px) { #mid { grid-template-columns:168px 1fr 240px; } #search { width:120px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><h1>Firesight</h1><div class="sub" id="bname">Map editor</div></div>
+    <label class="inline">Floor <select id="floorSel"></select></label>
+    <button type="button" id="btnUndo" title="Ctrl+Z">Undo</button>
+    <button type="button" id="btnRedo" title="Ctrl+Y">Redo</button>
+    <button type="button" id="btnFit" class="primary" title="Fit floor (F)">Fit to view</button>
+    <input id="search" type="search" placeholder="Find room, door, id" autocomplete="off" spellcheck="false">
+    <span class="dot" id="serverDot" title="API server"></span>
+    <span id="saveLabel">saved</span>
+    <span class="grow"></span>
+    <button type="button" id="btnNew">New</button>
+    <button type="button" id="btnOpen">Open</button>
+    <button type="button" id="btnReload">Reload</button>
+    <button type="button" id="btnDownload">Download</button>
+    <input id="saveName" type="text" spellcheck="false" placeholder="file-name" title="Saved as data/name.json">
+    <button type="button" id="btnSave">Save file</button>
+    <button type="button" id="btnPush" class="primary">Send to viewer</button>
+    <a href="index.html">3D viewer</a>
+  </header>
+  <div id="mid">
+    <aside id="tools">
+      <button type="button" class="tool on" data-tool="select">Select <kbd>V</kbd></button>
+      <button type="button" class="tool" data-tool="pan">Pan <kbd>H</kbd></button>
+      <button type="button" class="tool" data-tool="wall">Wall <kbd>W</kbd></button>
+      <button type="button" class="tool" data-tool="room">Room <kbd>R</kbd></button>
+      <button type="button" class="tool" data-tool="door">Door <kbd>D</kbd></button>
+      <button type="button" class="tool" data-tool="exit">Exit <kbd>X</kbd></button>
+      <button type="button" class="tool" data-tool="vertical">Stairs <kbd>T</kbd></button>
+      <button type="button" class="tool" data-tool="outline">Outline <kbd>O</kbd></button>
+      <button type="button" class="tool" data-tool="scale">Scale <kbd>K</kbd></button>
+      <label class="field"><span>Grid snap (m)</span>
+        <select id="snap">
+          <option value="0">Off</option>
+          <option value="0.1">0.1</option>
+          <option value="0.25" selected>0.25</option>
+          <option value="0.5">0.5</option>
+          <option value="1">1</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="optCorners" checked> Snap to corners</label>
+      <label class="check"><input type="checkbox" id="optLabels" checked> Room labels</label>
+      <label class="check"><input type="checkbox" id="optGhost" checked> Ghost other floors</label>
+      <label class="check"><input type="checkbox" id="optLow" checked> Low confidence</label>
+      <label class="check"><input type="checkbox" id="optExterior"> New walls are exterior</label>
+      <label class="check"><input type="checkbox" id="optExit"> New doors are exits</label>
+      <label class="check"><input type="checkbox" id="optIssueFloor" checked> Issues on this floor</label>
+      <label class="field"><span>New room type</span><select id="roomType"></select></label>
+      <label class="field"><span>New door width (m)</span>
+        <input id="doorWidth" type="number" step="0.05" min="0.05" value="0.9">
+      </label>
+      <label class="field"><span>Known length (m)</span>
+        <input id="knownM" type="number" step="0.01" min="0.05" value="0.9">
+      </label>
+      <label class="field"><span>Scale applies to</span>
+        <select id="scaleScope">
+          <option value="all">All floors</option>
+          <option value="floor">This floor</option>
+        </select>
+      </label>
+      <div class="actions">
+        <button type="button" id="btnCheck">Check viewer</button>
+      </div>
+      <p class="hint">Meters, x right, y down. Right-drag pans. Scroll zooms. A single door is 0.9 m. Shift keeps a wall horizontal or vertical.</p>
+    </aside>
+    <div id="stage">
+      <canvas id="cv"></canvas>
+      <div id="zoombar">
+        <button type="button" id="btnZoomOut" title="Zoom out">-</button>
+        <button type="button" id="btnZoomIn" title="Zoom in">+</button>
+      </div>
+    </div>
+    <aside id="inspector"></aside>
+  </div>
+  <div id="status"><span id="statLeft"></span><span id="statHint"></span></div>
+</div>
+<div id="toast" hidden></div>
+<pre id="selftest" hidden>PENDING</pre>
+<input id="file" type="file" accept="application/json,.json" hidden>
+<script>
+const SPACE_TYPES = ["classroom","office","hallway","lobby","restroom","stairwell","elevator","mechanical","lecture_hall","storage","unknown","void"];
+const VERT_TYPES = ["stairs","elevator","ramp"];
+const OPEN_TYPES = new Set(["hallway","lobby"]);
+const SPACE_COLORS = {
+  classroom:"#3d4f66", office:"#3a4554", hallway:"#2c3542", lobby:"#33404c", restroom:"#3d3a52",
+  stairwell:"#1e4d32", elevator:"#3a3a46", mechanical:"#4a3b2a", lecture_hall:"#2e4560",
+  storage:"#3e3a34", unknown:"#3a3038", void:"#14181e",
+};
+const GHOST = ["#8b949e","#d9a441","#bc8cff","#3fb950","#ff7b72"];
+const HINTS = {
+  select: "Click to select. Drag a point to reshape, or drag the shape to move.",
+  pan: "Drag to pan. Scroll to zoom.",
+  wall: "Click the start, then the end. Shift keeps the wall straight. Esc ends the chain.",
+  room: "Click each corner. Enter, or a click on the first corner, closes the room.",
+  door: "Click a wall. The door snaps to it and links the spaces on each side.",
+  exit: "Click a wall or the outline to place an exit. Click an existing door to toggle it.",
+  vertical: "Click the stair, elevator, or ramp. Drag moves this floor. Alt-drag moves every floor.",
+  outline: "Click the footprint corners. Enter closes the outline.",
+  scale: "Click two points that are really the known length apart. Click a door, then Enter, to scale from its width.",
+};
+
+const $ = (id) => document.getElementById(id);
+const canvas = $("cv");
+const ctx = canvas.getContext("2d");
+
+let doc = null;
+let floorLevel = 1;
+let tool = "select";
+let sel = null;
+let draft = null;
+let hover = null;
+let drag = null;
+let history = [];
+let future = [];
+let pendingBefore = null;
+let saveState = "saved";
+let serverOn = false;
+let busy = false;
+let serverIssues = [];
+let localIssues = [];
+let shiftDown = false;
+let spaceDown = false;
+let mouse = [0, 0];
+let mouseOn = false;
+let searchQ = "";
+let searchHits = [];
+let searchAt = 0;
+const view = { zoom: 8, panX: 40, panY: 40, dpr: 1 };
+
+function toast(msg) {
+  const el = $("toast");
+  el.hidden = false;
+  el.textContent = msg;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { el.hidden = true; }, 4200);
+}
+
+function h(tag, props, kids) {
+  const n = document.createElement(tag);
+  if (props) {
+    for (const [k, v] of Object.entries(props)) {
+      if (v == null) continue;
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = String(v);
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2).toLowerCase(), v);
+      else n[k] = v;
+    }
+  }
+  if (kids) for (const c of kids) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return n;
+}
+
+function current() {
+  return doc.floors.find((f) => f.level === floorLevel) || doc.floors[0];
+}
+function byId(list, id) { return list.find((x) => x.id === id); }
+function r3(n) { return Math.round((+n) * 1000) / 1000; }
+function r4(n) { return Math.round((+n) * 10000) / 10000; }
+function num(v, d = 0) { const n = +v; return Number.isFinite(n) ? n : d; }
+
+function asPoint(p) {
+  if (Array.isArray(p) && p.length >= 2 && Number.isFinite(+p[0]) && Number.isFinite(+p[1])) return [+p[0], +p[1]];
+  if (p && Number.isFinite(+p.x) && Number.isFinite(+p.y)) return [+p.x, +p.y];
+  return null;
+}
+function dist(ax, ay, bx, by) { return Math.hypot(ax - bx, ay - by); }
+function distToSeg(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+  if (L2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+function project(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+  if (L2 === 0) return { x: x1, y: y1, d: Math.hypot(px - x1, py - y1), t: 0 };
+  let t = ((px - x1) * dx + (py - y1) * dy) / L2;
+  t = Math.max(0, Math.min(1, t));
+  const x = x1 + t * dx, y = y1 + t * dy;
+  return { x, y, d: Math.hypot(px - x, py - y), t };
+}
+function unitOf(x1, y1, x2, y2) {
+  const L = Math.hypot(x2 - x1, y2 - y1) || 1;
+  return [(x2 - x1) / L, (y2 - y1) / L];
+}
+function pointInPoly(x, y, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    const denom = yj !== yi ? (yj - yi) : 1e-12;
+    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / denom + xi)) inside = !inside;
+  }
+  return inside;
+}
+function centroid(poly) {
+  if (!poly || !poly.length) return [0, 0];
+  let x = 0, y = 0;
+  for (const p of poly) { x += p[0]; y += p[1]; }
+  return [x / poly.length, y / poly.length];
+}
+function transform(x, y, al) {
+  const a = num(al.rotation_deg) * Math.PI / 180;
+  const c = Math.cos(a), s = Math.sin(a);
+  return [x * c - y * s + num(al.offset_x), x * s + y * c + num(al.offset_y)];
+}
+function rotateAxis(ax, ay, rotDeg) {
+  const a = rotDeg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  const x = ax * c - ay * s, y = ax * s + ay * c;
+  const n = Math.hypot(x, y) || 1;
+  return [x / n, y / n];
+}
+
+function blankBuilding() {
+  const outline = [[0, 0], [30, 0], [30, 18], [0, 18]];
+  return {
+    building: "Untitled building", units: "meters",
+    scale_method: "editor, a door is 0.9 m", floor_height_m: 4, wall_style: "centerline",
+    floors: [{
+      level: 1, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline,
+      walls: [
+        { id: "F1-W1", x1: 0, y1: 0, x2: 30, y2: 0, exterior: true, confidence: 1 },
+        { id: "F1-W2", x1: 30, y1: 0, x2: 30, y2: 18, exterior: true, confidence: 1 },
+        { id: "F1-W3", x1: 30, y1: 18, x2: 0, y2: 18, exterior: true, confidence: 1 },
+        { id: "F1-W4", x1: 0, y1: 18, x2: 0, y2: 0, exterior: true, confidence: 1 },
+      ],
+      spaces: [], doors: [], notes: "",
+    }],
+    vertical_connections: [], multi_floor_spaces: [], global_notes: "",
+  };
+}
+
+function sanitize(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.floors) || !data.floors.length) {
+    throw new Error("JSON needs a non-empty floors list");
+  }
+  data.building = String(data.building || "Building");
+  data.units = "meters";
+  data.scale_method = String(data.scale_method || "");
+  data.floor_height_m = num(data.floor_height_m, 4) || 4;
+  data.wall_style = data.wall_style === "faces" ? "faces" : "centerline";
+  data.global_notes = String(data.global_notes || "");
+  data.vertical_connections = Array.isArray(data.vertical_connections) ? data.vertical_connections : [];
+  data.multi_floor_spaces = Array.isArray(data.multi_floor_spaces) ? data.multi_floor_spaces : [];
+  data.floors = data.floors.filter((f) => f && typeof f === "object");
+  data.floors.forEach((fl, i) => {
+    fl.level = Number.isInteger(+fl.level) ? +fl.level : i + 1;
+    const al = fl.alignment || {};
+    fl.alignment = { offset_x: num(al.offset_x), offset_y: num(al.offset_y), rotation_deg: num(al.rotation_deg) };
+    fl.outline = (fl.outline || []).map(asPoint).filter(Boolean);
+    fl.notes = String(fl.notes || "");
+    fl.walls = (fl.walls || []).filter((w) => w && ["x1", "y1", "x2", "y2"].every((k) => Number.isFinite(+w[k]))).map((w) => {
+      w.x1 = +w.x1; w.y1 = +w.y1; w.x2 = +w.x2; w.y2 = +w.y2;
+      w.id = w.id == null || w.id === "" ? `F${fl.level}-W` : String(w.id);
+      w.exterior = !!w.exterior;
+      w.confidence = Number.isFinite(+w.confidence) ? +w.confidence : 1;
+      return w;
+    });
+    fl.spaces = (fl.spaces || []).filter((s) => s && typeof s === "object").map((s) => {
+      s.polygon = (s.polygon || []).map(asPoint).filter(Boolean);
+      s.id = s.id == null || s.id === "" ? `F${fl.level}-S` : String(s.id);
+      s.label = String(s.label || s.id);
+      s.type = String(s.type || "unknown");
+      s.multi_floor = !!s.multi_floor;
+      s.confidence = Number.isFinite(+s.confidence) ? +s.confidence : 1;
+      return s;
+    });
+    fl.doors = (fl.doors || []).filter((d) => d && Number.isFinite(+d.x) && Number.isFinite(+d.y)).map((d) => {
+      d.x = +d.x; d.y = +d.y;
+      d.width = Number.isFinite(+d.width) ? +d.width : 0.9;
+      d.id = d.id == null || d.id === "" ? `F${fl.level}-D` : String(d.id);
+      d.connects = (d.connects || []).map(String);
+      d.exterior_exit = !!d.exterior_exit;
+      d.confidence = Number.isFinite(+d.confidence) ? +d.confidence : 1;
+      if (Array.isArray(d.axis) && d.axis.length >= 2 && Number.isFinite(+d.axis[0]) && Number.isFinite(+d.axis[1])) {
+        const L = Math.hypot(+d.axis[0], +d.axis[1]);
+        d.axis = L > 1e-6 ? [+d.axis[0] / L, +d.axis[1] / L] : null;
+      } else d.axis = null;
+      return d;
+    });
+  });
+  data.floors.sort((a, b) => a.level - b.level);
+  data.vertical_connections = data.vertical_connections.filter((v) => v && typeof v === "object").map((v, i) => {
+    v.id = v.id == null || v.id === "" ? `V${i + 1}` : String(v.id);
+    v.name = String(v.name || v.id);
+    v.type = VERT_TYPES.includes(String(v.type)) ? String(v.type) : "stairs";
+    v.x = num(v.x); v.y = num(v.y);
+    v.confidence = Number.isFinite(+v.confidence) ? +v.confidence : 1;
+    const floors = [];
+    for (const lv of v.floors || []) {
+      const n = parseInt(lv, 10);
+      if (Number.isInteger(n) && !floors.includes(n)) floors.push(n);
+    }
+    v.floors = floors.sort((a, b) => a - b);
+    const pos = {};
+    for (const [k, p] of Object.entries(v.positions || {})) {
+      const pt = asPoint(p);
+      const lv = parseInt(k, 10);
+      if (pt && Number.isInteger(lv)) pos[String(lv)] = pt;
+    }
+    v.positions = pos;
+    return v;
+  });
+}
+
+function bakeAlignment(data) {
+  let did = false;
+  for (const fl of data.floors) {
+    const al = fl.alignment;
+    if (al.offset_x || al.offset_y || al.rotation_deg) {
+      did = true;
+      const xf = (x, y) => transform(x, y, al);
+      fl.outline = fl.outline.map((p) => xf(p[0], p[1]));
+      for (const w of fl.walls) {
+        const a = xf(w.x1, w.y1), b = xf(w.x2, w.y2);
+        w.x1 = a[0]; w.y1 = a[1]; w.x2 = b[0]; w.y2 = b[1];
+      }
+      for (const s of fl.spaces) s.polygon = s.polygon.map((p) => xf(p[0], p[1]));
+      for (const d of fl.doors) {
+        const p = xf(d.x, d.y);
+        d.x = p[0]; d.y = p[1];
+        if (d.axis) d.axis = rotateAxis(d.axis[0], d.axis[1], al.rotation_deg);
+      }
+      for (const v of data.vertical_connections) {
+        const key = String(fl.level);
+        if (v.positions[key]) v.positions[key] = xf(v.positions[key][0], v.positions[key][1]);
+      }
+    }
+    fl.alignment = { offset_x: 0, offset_y: 0, rotation_deg: 0 };
+  }
+  return did;
+}
+
+function loadRaw(raw, opts = {}) {
+  const data = structuredClone(raw);
+  const fromServer = opts.fromServer === true || (opts.fromServer !== false && data.grid != null);
+  delete data.grid; delete data.exits; delete data.warnings; delete data.levels;
+  sanitize(data);
+  const baked = fromServer ? false : bakeAlignment(data);
+  if (fromServer) for (const fl of data.floors) fl.alignment = { offset_x: 0, offset_y: 0, rotation_deg: 0 };
+  doc = data;
+  floorLevel = doc.floors[0].level;
+  history = []; future = []; pendingBefore = null;
+  sel = null; draft = null; hover = null;
+  serverIssues = [];
+  saveState = "saved";
+  const slug = slugName(doc.building);
+  if ($("saveName") && (!$("saveName").value || opts.setName)) $("saveName").value = slug;
+  if (opts.setName) $("saveName").value = slug;
+  buildInspector();
+  updateChrome();
+  fit();
+  if (baked && !opts.silent) toast("Applied each floor's alignment into the shared frame.");
+  return baked;
+}
+
+function allIds() {
+  const s = new Set();
+  for (const fl of doc.floors) {
+    for (const w of fl.walls) s.add(w.id);
+    for (const sp of fl.spaces) s.add(sp.id);
+    for (const d of fl.doors) s.add(d.id);
+  }
+  for (const v of doc.vertical_connections) s.add(v.id);
+  for (const m of doc.multi_floor_spaces || []) if (m && m.id) s.add(String(m.id));
+  return s;
+}
+function allocId(prefix, reserved) {
+  const used = allIds();
+  let n = 1, id = prefix + n;
+  while (used.has(id) || (reserved && reserved.has(id))) { n += 1; id = prefix + n; }
+  if (reserved) reserved.add(id);
+  return id;
+}
+function slugName(s) {
+  const t = String(s || "building").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+  return t || "building";
+}
+
+function exportDoor(d) {
+  const o = { ...d, x: r3(d.x), y: r3(d.y), width: r3(d.width), connects: (d.connects || []).map(String), exterior_exit: !!d.exterior_exit };
+  if (Array.isArray(d.axis) && d.axis.length >= 2 && Number.isFinite(+d.axis[0])) {
+    const L = Math.hypot(+d.axis[0], +d.axis[1]) || 1;
+    o.axis = [r4(d.axis[0] / L), r4(d.axis[1] / L)];
+  } else delete o.axis;
+  return o;
+}
+function exportDoc() {
+  const out = {};
+  for (const [k, v] of Object.entries(doc)) {
+    if (k === "floors" || k === "vertical_connections" || k === "grid" || k === "exits" || k === "warnings" || k === "levels") continue;
+    out[k] = v;
+  }
+  out.units = "meters";
+  out.wall_style = doc.wall_style === "faces" ? "faces" : "centerline";
+  out.floors = doc.floors.map((fl) => ({
+    ...fl,
+    alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 },
+    outline: fl.outline.map((p) => [r3(p[0]), r3(p[1])]),
+    walls: fl.walls.map((w) => ({ ...w, x1: r3(w.x1), y1: r3(w.y1), x2: r3(w.x2), y2: r3(w.y2), exterior: !!w.exterior })),
+    spaces: fl.spaces.map((s) => ({ ...s, polygon: s.polygon.map((p) => [r3(p[0]), r3(p[1])]), multi_floor: !!s.multi_floor })),
+    doors: fl.doors.map(exportDoor),
+    notes: fl.notes || "",
+  }));
+  out.vertical_connections = doc.vertical_connections.map((v) => {
+    const o = { ...v, x: r3(v.x), y: r3(v.y), floors: [...v.floors].sort((a, b) => a - b) };
+    delete o.positions;
+    const pos = {};
+    for (const [k, p] of Object.entries(v.positions || {})) if (Array.isArray(p)) pos[String(parseInt(k, 10))] = [r3(p[0]), r3(p[1])];
+    if (Object.keys(pos).length) o.positions = pos;
+    return o;
+  });
+  if (!out.multi_floor_spaces) out.multi_floor_spaces = [];
+  return out;
+}
+
+function vertPoint(v, level) {
+  const p = v.positions && v.positions[String(level)];
+  if (Array.isArray(p)) return [p[0], p[1]];
+  return [v.x, v.y];
+}
+function setVert(v, level, x, y, all) {
+  if (all) { v.x = x; v.y = y; v.positions = {}; return; }
+  v.positions = v.positions || {};
+  v.positions[String(level)] = [x, y];
+}
+
+function capture() {
+  if (pendingBefore) return;
+  pendingBefore = { doc: structuredClone(doc), floor: floorLevel, sel: sel ? { ...sel } : null };
+}
+function commit(keep = true) {
+  if (!pendingBefore) { updateChrome(); return; }
+  if (!keep) { pendingBefore = null; updateChrome(); return; }
+  history.push(pendingBefore);
+  if (history.length > 12) history.shift();
+  future = [];
+  pendingBefore = null;
+  saveState = "dirty";
+  updateChrome();
+}
+function edit(fn) {
+  capture();
+  try { fn(); }
+  catch (err) {
+    if (pendingBefore) { doc = pendingBefore.doc; floorLevel = pendingBefore.floor; sel = pendingBefore.sel; pendingBefore = null; }
+    toast(err.message || String(err));
+    updateChrome();
+    return false;
+  }
+  commit(true);
+  return true;
+}
+function selectionAlive() {
+  if (!sel || !doc) return false;
+  const fl = doc.floors.find((f) => f.level === floorLevel) || doc.floors[0];
+  if (!fl) return false;
+  if (sel.kind === "outline") return true;
+  if (sel.kind === "wall") return fl.walls.some((w) => w.id === sel.id);
+  if (sel.kind === "space") return fl.spaces.some((s) => s.id === sel.id);
+  if (sel.kind === "door") return fl.doors.some((d) => d.id === sel.id);
+  if (sel.kind === "vertical") return doc.vertical_connections.some((v) => v.id === sel.id);
+  return false;
+}
+function afterHistory() {
+  if (!doc.floors.some((f) => f.level === floorLevel)) floorLevel = doc.floors[0].level;
+  if (sel && !selectionAlive()) sel = null;
+  draft = null;
+  saveState = "dirty";
+  buildInspector();
+  updateChrome();
+}
+function undo() {
+  if (pendingBefore) commit(true);
+  if (!history.length) return;
+  future.push({ doc: structuredClone(doc), floor: floorLevel, sel: sel ? { ...sel } : null });
+  const prev = history.pop();
+  doc = prev.doc; floorLevel = prev.floor; sel = prev.sel;
+  afterHistory();
+}
+function redo() {
+  if (pendingBefore) commit(true);
+  if (!future.length) return;
+  history.push({ doc: structuredClone(doc), floor: floorLevel, sel: sel ? { ...sel } : null });
+  const nxt = future.pop();
+  doc = nxt.doc; floorLevel = nxt.floor; sel = nxt.sel;
+  afterHistory();
+}
+
+function viewSize() {
+  return { w: canvas.clientWidth || 800, h: canvas.clientHeight || 600 };
+}
+function screenToWorld(sx, sy) {
+  return [(sx - view.panX) / view.zoom, (sy - view.panY) / view.zoom];
+}
+function worldToScreen(x, y) {
+  return [x * view.zoom + view.panX, y * view.zoom + view.panY];
+}
+function eventWorld(e) {
+  const r = canvas.getBoundingClientRect();
+  return screenToWorld(e.clientX - r.left, e.clientY - r.top);
+}
+function boundsOf(fl) {
+  let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity, n = 0;
+  const add = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    n += 1;
+    if (x < minx) minx = x; if (y < miny) miny = y;
+    if (x > maxx) maxx = x; if (y > maxy) maxy = y;
+  };
+  for (const p of fl.outline) add(p[0], p[1]);
+  for (const w of fl.walls) { add(w.x1, w.y1); add(w.x2, w.y2); }
+  if (!n) return { minx: 0, miny: 0, maxx: 30, maxy: 18 };
+  return { minx, miny, maxx, maxy };
+}
+function fit(fl) {
+  fl = fl || (doc && current());
+  if (!fl) return;
+  const b = boundsOf(fl);
+  const { w, h } = viewSize();
+  const bw = Math.max(b.maxx - b.minx, 1), bh = Math.max(b.maxy - b.miny, 1);
+  if (w < 20 || h < 20) { view.zoom = 8; view.panX = 40; view.panY = 40; render(); return; }
+  view.zoom = Math.max(0.05, Math.min(800, Math.min((w * 0.9) / bw, (h * 0.9) / bh)));
+  view.panX = (w - bw * view.zoom) / 2 - b.minx * view.zoom;
+  view.panY = (h - bh * view.zoom) / 2 - b.miny * view.zoom;
+  render();
+}
+function centerOn(x, y) {
+  const { w, h } = viewSize();
+  view.panX = w / 2 - x * view.zoom;
+  view.panY = h / 2 - y * view.zoom;
+  render();
+}
+function zoomAt(sx, sy, factor) {
+  const before = screenToWorld(sx, sy);
+  view.zoom = Math.max(0.05, Math.min(800, view.zoom * factor));
+  view.panX = sx - before[0] * view.zoom;
+  view.panY = sy - before[1] * view.zoom;
+  render();
+}
+
+function gridStep() { return parseFloat($("snap").value) || 0; }
+function collectSnap() {
+  const fl = current(), pts = [];
+  const add = (x, y, id) => { if (Number.isFinite(x) && Number.isFinite(y)) pts.push({ x, y, id }); };
+  for (const w of fl.walls) { add(w.x1, w.y1, "wall:" + w.id); add(w.x2, w.y2, "wall:" + w.id); }
+  for (const s of fl.spaces) s.polygon.forEach((p, i) => add(p[0], p[1], "space:" + s.id + ":" + i));
+  fl.outline.forEach((p, i) => add(p[0], p[1], "outline:" + i));
+  for (const d of fl.doors) add(d.x, d.y, "door:" + d.id);
+  for (const v of doc.vertical_connections) {
+    if (v.floors.includes(fl.level)) { const p = vertPoint(v, fl.level); add(p[0], p[1], "vertical:" + v.id); }
+  }
+  return pts;
+}
+function snapPoint(x, y, opts = {}) {
+  let px = x, py = y;
+  if (opts.from && shiftDown) {
+    if (Math.abs(x - opts.from[0]) < Math.abs(y - opts.from[1])) { px = opts.from[0]; py = y; }
+    else { px = x; py = opts.from[1]; }
+    const g = gridStep();
+    if (g > 0) {
+      if (px === opts.from[0]) py = Math.round(py / g) * g;
+      else px = Math.round(px / g) * g;
+    }
+    return [px, py];
+  }
+  if ($("optCorners").checked) {
+    const tol = 12 / (view.zoom || 1);
+    let best = null;
+    for (const p of collectSnap()) {
+      if (opts.skip && opts.skip(p)) continue;
+      const d = Math.hypot(p.x - x, p.y - y);
+      if (d <= tol && (!best || d < best.d)) best = { x: p.x, y: p.y, d };
+    }
+    if (best) return [best.x, best.y];
+  }
+  const g = gridStep();
+  if (g > 0) return [Math.round(x / g) * g, Math.round(y / g) * g];
+  return [x, y];
+}
+
+function nearestBoundary(fl, x, y, maxDist) {
+  let best = null;
+  const consider = (x1, y1, x2, y2) => {
+    const pr = project(x, y, x1, y1, x2, y2);
+    if (pr.d <= maxDist && (!best || pr.d < best.d)) best = { ...pr, axis: unitOf(x1, y1, x2, y2) };
+  };
+  for (const w of fl.walls) consider(w.x1, w.y1, w.x2, w.y2);
+  if (fl.outline.length >= 2) {
+    for (let i = 0; i < fl.outline.length; i++) {
+      const a = fl.outline[i], b = fl.outline[(i + 1) % fl.outline.length];
+      consider(a[0], a[1], b[0], b[1]);
+    }
+  }
+  return best;
+}
+function nearestSpace(fl, x, y) {
+  let best = null, bestD = Infinity;
+  for (const s of fl.spaces) {
+    if (!s.polygon || s.polygon.length < 3) continue;
+    const c = centroid(s.polygon);
+    const d = dist(c[0], c[1], x, y);
+    if (d < bestD) { best = s; bestD = d; }
+  }
+  return best;
+}
+function spaceAt(fl, x, y) {
+  let best = null, bestA = Infinity;
+  for (const s of fl.spaces) {
+    if (s.polygon.length < 3 || !pointInPoly(x, y, s.polygon)) continue;
+    let a = 0;
+    for (let i = 0, j = s.polygon.length - 1; i < s.polygon.length; j = i++) {
+      a += s.polygon[j][0] * s.polygon[i][1] - s.polygon[i][0] * s.polygon[j][1];
+    }
+    a = Math.abs(a / 2);
+    if (a < bestA) { best = s; bestA = a; }
+  }
+  return best;
+}
+function inferConnects(fl, x, y, axis) {
+  const nx = -axis[1], ny = axis[0], found = [];
+  for (const sign of [1, -1]) {
+    let hit = null;
+    for (const distM of [0.35, 0.7, 1.2]) {
+      hit = spaceAt(fl, x + nx * sign * distM, y + ny * sign * distM);
+      if (hit) break;
+    }
+    found.push(hit ? hit.id : "OUTSIDE");
+  }
+  const ids = [];
+  for (const id of found) if (!ids.includes(id)) ids.push(id);
+  return ids;
+}
+function doorAxis(fl, d) {
+  if (Array.isArray(d.axis) && d.axis.length >= 2) {
+    const L = Math.hypot(d.axis[0], d.axis[1]) || 1;
+    return [d.axis[0] / L, d.axis[1] / L];
+  }
+  const hit = nearestBoundary(fl, d.x, d.y, 1.5);
+  return hit ? hit.axis : [1, 0];
+}
+
+function hitTest(x, y) {
+  const fl = current();
+  const tol = 8 / view.zoom;
+  const handleTol = 11 / view.zoom;
+  if (sel && sel.kind === "wall") {
+    const w = byId(fl.walls, sel.id);
+    if (w) {
+      if (dist(w.x1, w.y1, x, y) <= handleTol) return { kind: "wall", id: w.id, part: "a" };
+      if (dist(w.x2, w.y2, x, y) <= handleTol) return { kind: "wall", id: w.id, part: "b" };
+    }
+  }
+  if (sel && sel.kind === "space") {
+    const s = byId(fl.spaces, sel.id);
+    if (s) for (let i = 0; i < s.polygon.length; i++) {
+      if (dist(s.polygon[i][0], s.polygon[i][1], x, y) <= handleTol) return { kind: "space", id: s.id, part: "vertex", vi: i };
+    }
+  }
+  if (sel && sel.kind === "outline") {
+    for (let i = 0; i < fl.outline.length; i++) {
+      if (dist(fl.outline[i][0], fl.outline[i][1], x, y) <= handleTol) return { kind: "outline", part: "vertex", vi: i };
+    }
+  }
+  let bestDoor = null, bestDd = Infinity;
+  for (const d of fl.doors) {
+    const dd = dist(d.x, d.y, x, y);
+    const r = Math.max(tol, Math.min(Math.max(d.width, 0.4), 1.6) / 2);
+    if (dd <= r && dd < bestDd) { bestDoor = d; bestDd = dd; }
+  }
+  if (bestDoor) return { kind: "door", id: bestDoor.id, part: "body" };
+  for (const v of doc.vertical_connections) {
+    if (!v.floors.includes(fl.level)) continue;
+    const p = vertPoint(v, fl.level);
+    if (dist(p[0], p[1], x, y) <= Math.max(tol, 0.45)) return { kind: "vertical", id: v.id, part: "body" };
+  }
+  let bestW = null, bestWd = tol;
+  for (const w of fl.walls) {
+    const d = distToSeg(x, y, w.x1, w.y1, w.x2, w.y2);
+    if (d < bestWd) { bestWd = d; bestW = w; }
+  }
+  if (bestW) return { kind: "wall", id: bestW.id, part: "body" };
+  if (fl.outline.length >= 2) {
+    for (let i = 0; i < fl.outline.length; i++) {
+      const a = fl.outline[i], b = fl.outline[(i + 1) % fl.outline.length];
+      if (distToSeg(x, y, a[0], a[1], b[0], b[1]) <= tol) return { kind: "outline", part: "edge", index: i };
+    }
+  }
+  const room = spaceAt(fl, x, y);
+  if (room) return { kind: "space", id: room.id, part: "body" };
+  if (fl.outline.length >= 3 && pointInPoly(x, y, fl.outline)) return { kind: "outline", part: "body" };
+  return null;
+}
+
+function takeSnap(hit) {
+  const fl = current();
+  if (hit.kind === "wall") {
+    const w = byId(fl.walls, hit.id);
+    return { x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2 };
+  }
+  if (hit.kind === "space") {
+    const s = byId(fl.spaces, hit.id);
+    return { polygon: s.polygon.map((p) => [p[0], p[1]]), anchor: centroid(s.polygon) };
+  }
+  if (hit.kind === "door") {
+    const d = byId(fl.doors, hit.id);
+    return { x: d.x, y: d.y, axis: d.axis ? d.axis.slice() : null };
+  }
+  if (hit.kind === "outline") return { outline: fl.outline.map((p) => [p[0], p[1]]) };
+  if (hit.kind === "vertical") {
+    const v = byId(doc.vertical_connections, hit.id);
+    const p = vertPoint(v, fl.level);
+    return { x: v.x, y: v.y, positions: structuredClone(v.positions || {}), px: p[0], py: p[1] };
+  }
+  return null;
+}
+function placeDrag(x, y, alt) {
+  const fl = current();
+  const hit = drag.hit, o = drag.orig;
+  const dx = x - drag.x0, dy = y - drag.y0;
+  if (hit.kind === "wall") {
+    const w = byId(fl.walls, hit.id);
+    w.x1 = o.x1; w.y1 = o.y1; w.x2 = o.x2; w.y2 = o.y2;
+    if (hit.part === "a" || hit.part === "b") {
+      const sx = hit.part === "a" ? o.x1 : o.x2, sy = hit.part === "a" ? o.y1 : o.y2;
+      const p = snapPoint(x, y, { skip: (pt) => dist(pt.x, pt.y, sx, sy) < 1e-6 });
+      if (hit.part === "a") { w.x1 = p[0]; w.y1 = p[1]; }
+      else { w.x2 = p[0]; w.y2 = p[1]; }
+    } else {
+      const p = snapPoint(o.x1 + dx, o.y1 + dy, { skip: (pt) => pt.id.startsWith("wall:" + hit.id) });
+      const mx = p[0] - o.x1, my = p[1] - o.y1;
+      w.x1 = o.x1 + mx; w.y1 = o.y1 + my; w.x2 = o.x2 + mx; w.y2 = o.y2 + my;
+    }
+  } else if (hit.kind === "space") {
+    const s = byId(fl.spaces, hit.id);
+    s.polygon = o.polygon.map((p) => [p[0], p[1]]);
+    if (Number.isInteger(hit.vi)) {
+      const src = o.polygon[hit.vi];
+      const p = snapPoint(x, y, { skip: (pt) => dist(pt.x, pt.y, src[0], src[1]) < 1e-6 });
+      s.polygon[hit.vi] = p;
+    } else {
+      const p = snapPoint(o.anchor[0] + dx, o.anchor[1] + dy, { skip: (pt) => pt.id.startsWith("space:" + hit.id + ":") });
+      const mx = p[0] - o.anchor[0], my = p[1] - o.anchor[1];
+      s.polygon = o.polygon.map((q) => [q[0] + mx, q[1] + my]);
+    }
+  } else if (hit.kind === "outline") {
+    fl.outline = o.outline.map((p) => [p[0], p[1]]);
+    if (Number.isInteger(hit.vi)) {
+      const src = o.outline[hit.vi];
+      const p = snapPoint(x, y, { skip: (pt) => dist(pt.x, pt.y, src[0], src[1]) < 1e-6 });
+      fl.outline[hit.vi] = p;
+    } else {
+      const anchor = centroid(o.outline);
+      const p = snapPoint(anchor[0] + dx, anchor[1] + dy, { skip: (pt) => pt.id.startsWith("outline:") });
+      const mx = p[0] - anchor[0], my = p[1] - anchor[1];
+      fl.outline = o.outline.map((q) => [q[0] + mx, q[1] + my]);
+    }
+  } else if (hit.kind === "door") {
+    const d = byId(fl.doors, hit.id);
+    d.x = o.x; d.y = o.y; d.axis = o.axis ? o.axis.slice() : null;
+    const rawx = o.x + dx, rawy = o.y + dy;
+    const near = nearestBoundary(fl, rawx, rawy, Math.max(0.6, 12 / view.zoom));
+    if (near) {
+      d.x = near.x; d.y = near.y;
+      if (o.axis || doc.wall_style === "faces") d.axis = near.axis.slice();
+    } else {
+      const p = snapPoint(rawx, rawy, { skip: (pt) => pt.id === "door:" + d.id });
+      d.x = p[0]; d.y = p[1];
+    }
+  } else if (hit.kind === "vertical") {
+    const v = byId(doc.vertical_connections, hit.id);
+    v.x = o.x; v.y = o.y; v.positions = structuredClone(o.positions);
+    const p = snapPoint(o.px + dx, o.py + dy, { skip: (pt) => pt.id === "vertical:" + v.id });
+    setVert(v, fl.level, p[0], p[1], alt);
+  }
+}
+function moveSel(dx, dy, all) {
+  const fl = current();
+  if (sel.kind === "wall") {
+    const w = byId(fl.walls, sel.id);
+    if (sel.part === "a") { w.x1 += dx; w.y1 += dy; }
+    else if (sel.part === "b") { w.x2 += dx; w.y2 += dy; }
+    else { w.x1 += dx; w.y1 += dy; w.x2 += dx; w.y2 += dy; }
+  } else if (sel.kind === "space") {
+    const s = byId(fl.spaces, sel.id);
+    if (Number.isInteger(sel.vi)) { s.polygon[sel.vi][0] += dx; s.polygon[sel.vi][1] += dy; }
+    else for (const p of s.polygon) { p[0] += dx; p[1] += dy; }
+  } else if (sel.kind === "outline") {
+    if (Number.isInteger(sel.vi)) { fl.outline[sel.vi][0] += dx; fl.outline[sel.vi][1] += dy; }
+    else for (const p of fl.outline) { p[0] += dx; p[1] += dy; }
+  } else if (sel.kind === "door") {
+    const d = byId(fl.doors, sel.id); d.x += dx; d.y += dy;
+  } else if (sel.kind === "vertical") {
+    const v = byId(doc.vertical_connections, sel.id);
+    const p = vertPoint(v, fl.level);
+    setVert(v, fl.level, p[0] + dx, p[1] + dy, all);
+  }
+}
+
+function scaleFloors(floors, factor, ox, oy) {
+  const set = new Set(floors.map((f) => f.level));
+  const all = set.size === doc.floors.length;
+  const xf = (x, y) => [ox + (x - ox) * factor, oy + (y - oy) * factor];
+  for (const fl of floors) {
+    fl.outline = fl.outline.map((p) => xf(p[0], p[1]));
+    for (const w of fl.walls) {
+      const a = xf(w.x1, w.y1), b = xf(w.x2, w.y2);
+      w.x1 = a[0]; w.y1 = a[1]; w.x2 = b[0]; w.y2 = b[1];
+    }
+    for (const s of fl.spaces) s.polygon = s.polygon.map((p) => xf(p[0], p[1]));
+    for (const d of fl.doors) {
+      const p = xf(d.x, d.y); d.x = p[0]; d.y = p[1]; d.width *= factor;
+    }
+  }
+  for (const v of doc.vertical_connections) {
+    if (all) {
+      const p = xf(v.x, v.y); v.x = p[0]; v.y = p[1];
+      for (const k of Object.keys(v.positions || {})) v.positions[k] = xf(v.positions[k][0], v.positions[k][1]);
+    } else {
+      for (const lv of v.floors) {
+        if (!set.has(lv)) continue;
+        const p = vertPoint(v, lv);
+        const q = xf(p[0], p[1]);
+        setVert(v, lv, q[0], q[1], false);
+      }
+    }
+  }
+}
+function applyMeasuredScale(distM, target, ax, ay, bx, by) {
+  if (!(distM > 0.02)) { toast("That length is too short to scale from."); return; }
+  const factor = target / distM;
+  if (factor < 0.001 || factor > 1000) { toast("That scale factor is too extreme."); return; }
+  const scope = $("scaleScope").value;
+  const floors = scope === "floor" ? [current()] : doc.floors.slice();
+  const ox = (ax + bx) / 2, oy = (ay + by) / 2;
+  edit(() => {
+    scaleFloors(floors, factor, ox, oy);
+    const note = `Scaled by ${factor.toFixed(3)} so ${distM.toFixed(2)} m became ${target.toFixed(2)} m (${scope === "floor" ? "this floor" : "all floors"}).`;
+    doc.scale_method = (doc.scale_method && doc.scale_method.length < 280) ? (doc.scale_method + " " + note) : note;
+  });
+  toast(`Scaled by ${factor.toFixed(3)}.`);
+}
+
+function gapsOnSegment(x1, y1, x2, y2, doors) {
+  const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy, L = Math.sqrt(L2);
+  if (L < 0.05) return [];
+  const gaps = [];
+  for (const d of doors) {
+    const t = ((d.x - x1) * dx + (d.y - y1) * dy) / L2;
+    if (t <= 0.01 || t >= 0.99) continue;
+    const px = x1 + t * dx, py = y1 + t * dy;
+    if (dist(d.x, d.y, px, py) > 0.45) continue;
+    const half = (Number(d.width) || 0.9) / 2 / L;
+    gaps.push([t - half, t + half]);
+  }
+  gaps.sort((a, b) => a[0] - b[0]);
+  const merged = [];
+  for (const g of gaps) {
+    if (!merged.length || g[0] > merged[merged.length - 1][1]) merged.push([g[0], g[1]]);
+    else merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], g[1]);
+  }
+  return merged;
+}
+function segmentsFromGaps(x1, y1, x2, y2, gaps) {
+  const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy);
+  const segs = [];
+  let cur = 0;
+  for (const [a, b] of gaps) {
+    const aa = Math.max(0, a), bb = Math.min(1, b);
+    if (aa > cur && (aa - cur) * L > 0.05) segs.push([cur, aa]);
+    cur = Math.max(cur, bb);
+  }
+  if (cur < 1 && (1 - cur) * L > 0.05) segs.push([cur, 1]);
+  return segs.map(([a, b]) => [x1 + a * dx, y1 + a * dy, x1 + b * dx, y1 + b * dy]);
+}
+function edgeCovered(fl, a, b) {
+  const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  const ux = b[0] - a[0], uy = b[1] - a[1], L = Math.hypot(ux, uy) || 1;
+  return fl.walls.some((w) => {
+    if (distToSeg(mx, my, w.x1, w.y1, w.x2, w.y2) > 0.35) return false;
+    const wx = w.x2 - w.x1, wy = w.y2 - w.y1, WL = Math.hypot(wx, wy) || 1;
+    return Math.abs((wx / WL) * (ux / L) + (wy / WL) * (uy / L)) > 0.85;
+  });
+}
+function addWallsAlong(poly, exterior, doors) {
+  const fl = current();
+  let n = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    if (dist(a[0], a[1], b[0], b[1]) < 0.05 || edgeCovered(fl, a, b)) continue;
+    const gaps = gapsOnSegment(a[0], a[1], b[0], b[1], doors || []);
+    const segs = gaps.length ? segmentsFromGaps(a[0], a[1], b[0], b[1], gaps) : [[a[0], a[1], b[0], b[1]]];
+    for (const s of segs) {
+      fl.walls.push({ id: allocId(`F${fl.level}-W`), x1: s[0], y1: s[1], x2: s[2], y2: s[3], exterior: !!exterior, confidence: 1 });
+      n += 1;
+    }
+  }
+  return n;
+}
+function cutWallsAtDoors(fl, onlyDoor) {
+  const doors = onlyDoor ? [onlyDoor] : fl.doors;
+  const next = [];
+  const reserved = new Set();
+  let cuts = 0;
+  for (const w of fl.walls) {
+    const gaps = gapsOnSegment(w.x1, w.y1, w.x2, w.y2, doors);
+    if (!gaps.length) { next.push(w); continue; }
+    const segs = segmentsFromGaps(w.x1, w.y1, w.x2, w.y2, gaps);
+    if (segs.length === 1 && dist(segs[0][0], segs[0][1], w.x1, w.y1) < 1e-6 && dist(segs[0][2], segs[0][3], w.x2, w.y2) < 1e-6) {
+      next.push(w); continue;
+    }
+    cuts += 1;
+    segs.forEach((s, i) => {
+      next.push({ ...w, id: i === 0 ? w.id : allocId(`F${fl.level}-W`, reserved), x1: s[0], y1: s[1], x2: s[2], y2: s[3] });
+    });
+  }
+  fl.walls = next;
+  return cuts;
+}
+function markExteriorWalls() {
+  const fl = current();
+  if (fl.outline.length < 3) { toast("Draw an outline first."); return; }
+  let n = 0;
+  edit(() => {
+    for (const w of fl.walls) {
+      const mx = (w.x1 + w.x2) / 2, my = (w.y1 + w.y2) / 2;
+      let d = Infinity;
+      for (let i = 0; i < fl.outline.length; i++) {
+        const a = fl.outline[i], b = fl.outline[(i + 1) % fl.outline.length];
+        d = Math.min(d, distToSeg(mx, my, a[0], a[1], b[0], b[1]));
+      }
+      if (d < 0.45 && !w.exterior) { w.exterior = true; n += 1; }
+    }
+  });
+  toast(n ? (n + " walls marked exterior.") : "Those walls were already exterior.");
+}
+
+function recomputeIssues() {
+  const issues = [];
+  if (!doc) { localIssues = []; return; }
+  const ids = new Set();
+  const dup = new Set();
+  for (const fl of doc.floors) {
+    for (const list of [fl.walls, fl.spaces, fl.doors]) for (const e of list) {
+      if (ids.has(e.id)) dup.add(e.id); else ids.add(e.id);
+    }
+  }
+  for (const v of doc.vertical_connections) { if (ids.has(v.id)) dup.add(v.id); else ids.add(v.id); }
+  const seenLv = new Set();
+  for (const fl of doc.floors) {
+    if (seenLv.has(fl.level)) issues.push({ priority: 2, level: fl.level, text: `Two floors use level ${fl.level}.`, x: 0, y: 0 });
+    seenLv.add(fl.level);
+  }
+  for (const id of dup) issues.push({ priority: 2, text: `Duplicate id ${id}. The viewer renames duplicates on load.` });
+  const exits = doc.floors.reduce((n, fl) => n + fl.doors.filter((d) => d.exterior_exit).length, 0);
+  if (!exits) issues.push({ priority: 1, text: "No exterior exit. Mark a door as an exit or routing fails." });
+  if (doc.floors.length > 1 && !doc.vertical_connections.some((v) => v.type === "stairs" || v.type === "ramp")) {
+    issues.push({ priority: 1, text: "No stairs or ramp. Upper floors cannot reach an exit." });
+  }
+  let low = 0;
+  for (const fl of doc.floors) {
+    const boundary = fl.walls.map((w) => [w.x1, w.y1, w.x2, w.y2]);
+    if (fl.outline.length >= 2) {
+      for (let i = 0; i < fl.outline.length; i++) {
+        const a = fl.outline[i], b = fl.outline[(i + 1) % fl.outline.length];
+        boundary.push([a[0], a[1], b[0], b[1]]);
+      }
+    }
+    const withDoor = new Set();
+    for (const d of fl.doors) for (const c of d.connects || []) withDoor.add(c);
+    for (const d of fl.doors) {
+      const bad = (d.connects || []).filter((c) => c !== "OUTSIDE" && c.toUpperCase() !== "OUTSIDE" && !ids.has(c));
+      if (!d.connects || !d.connects.length) {
+        issues.push({ priority: 3, level: fl.level, sel: { kind: "door", id: d.id, part: "body" }, x: d.x, y: d.y, text: `Floor ${fl.level}: door ${d.id} connects no spaces.` });
+      } else if (bad.length) {
+        issues.push({ priority: 3, level: fl.level, sel: { kind: "door", id: d.id, part: "body" }, x: d.x, y: d.y, text: `Floor ${fl.level}: door ${d.id} connects unknown ids ${bad.join(", ")}.` });
+      }
+      let dd = Infinity;
+      for (const e of boundary) dd = Math.min(dd, distToSeg(d.x, d.y, e[0], e[1], e[2], e[3]));
+      if (boundary.length && dd > 0.6) {
+        issues.push({ priority: 3, level: fl.level, sel: { kind: "door", id: d.id, part: "body" }, x: d.x, y: d.y, text: `Floor ${fl.level}: door ${d.id} is ${dd.toFixed(1)} m from any wall.` });
+      }
+      if (d.width < 0.6 || d.width > 3) {
+        issues.push({ priority: 6, level: fl.level, sel: { kind: "door", id: d.id, part: "body" }, x: d.x, y: d.y, text: `Floor ${fl.level}: door ${d.id} width ${d.width.toFixed(2)} m. The viewer clamps width to 0.6 to 3 m.` });
+      }
+      if (d.confidence < 0.5) low += 1;
+    }
+    for (const s of fl.spaces) {
+      if (s.confidence < 0.5) low += 1;
+      if (s.polygon.length < 3) {
+        issues.push({ priority: 3, level: fl.level, sel: { kind: "space", id: s.id, part: "body" }, text: `Floor ${fl.level}: space ${s.id} needs at least 3 corners.` });
+        continue;
+      }
+      const c = centroid(s.polygon);
+      if (!OPEN_TYPES.has(s.type) && !withDoor.has(s.id)) {
+        issues.push({ priority: 4, level: fl.level, sel: { kind: "space", id: s.id, part: "body" }, x: c[0], y: c[1], text: `Floor ${fl.level}: ${s.label} has no door.` });
+      }
+      if (fl.outline.length >= 3) {
+        const outside = s.polygon.some((p) => !pointInPoly(p[0], p[1], fl.outline) && distToOutline(p[0], p[1], fl.outline) > 0.5);
+        if (outside) issues.push({ priority: 4, level: fl.level, sel: { kind: "space", id: s.id, part: "body" }, x: c[0], y: c[1], text: `Floor ${fl.level}: ${s.label} extends outside the outline.` });
+      }
+      const lab = s.label.toUpperCase();
+      if (lab.includes("STAIR") && s.type !== "stairwell") {
+        issues.push({ priority: 4, level: fl.level, sel: { kind: "space", id: s.id, part: "body" }, x: c[0], y: c[1], text: `Floor ${fl.level}: ${s.label} is typed ${s.type}. A stair label should be a stairwell.` });
+      }
+      if (lab.includes("ELEV") && s.type !== "elevator") {
+        issues.push({ priority: 4, level: fl.level, sel: { kind: "space", id: s.id, part: "body" }, x: c[0], y: c[1], text: `Floor ${fl.level}: ${s.label} is typed ${s.type}. An elevator label should be an elevator.` });
+      }
+    }
+    for (const w of fl.walls) if (w.confidence < 0.5) low += 1;
+  }
+  for (const v of doc.vertical_connections) {
+    if (v.floors.length < 2) {
+      issues.push({ priority: 5, sel: { kind: "vertical", id: v.id, part: "body" }, x: v.x, y: v.y, text: `${v.name} lists fewer than 2 floors. The viewer drops it.` });
+    }
+    const want = v.type === "elevator" ? "elevator" : (v.type === "ramp" ? "stairwell" : "stairwell");
+    for (const lv of v.floors) {
+      const fl = doc.floors.find((f) => f.level === lv);
+      if (!fl) continue;
+      const p = vertPoint(v, lv);
+      const spaces = fl.spaces.filter((s) => s.polygon.length >= 3 && pointInPoly(p[0], p[1], s.polygon));
+      if (v.type !== "ramp" && !spaces.some((s) => s.type === want)) {
+        issues.push({ priority: 5, level: lv, sel: { kind: "vertical", id: v.id, part: "body" }, x: p[0], y: p[1], text: `Floor ${lv}: ${v.name} is outside a ${want} space.` });
+      }
+    }
+    for (let i = 0; i < v.floors.length; i++) for (let j = i + 1; j < v.floors.length; j++) {
+      const a = vertPoint(v, v.floors[i]), b = vertPoint(v, v.floors[j]);
+      const d = dist(a[0], a[1], b[0], b[1]);
+      if (d > 2) issues.push({ priority: 5, level: v.floors[i], sel: { kind: "vertical", id: v.id, part: "body" }, x: a[0], y: a[1], text: `${v.name} is ${d.toFixed(1)} m apart on floors ${v.floors[i]} and ${v.floors[j]}.` });
+    }
+  }
+  if (low) issues.push({ priority: 6, text: `${low} elements have confidence below 0.5.` });
+  issues.sort((a, b) => a.priority - b.priority || (a.level || 0) - (b.level || 0));
+  localIssues = issues;
+}
+function distToOutline(x, y, poly) {
+  let d = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    d = Math.min(d, distToSeg(x, y, a[0], a[1], b[0], b[1]));
+  }
+  return d;
+}
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  view.dpr = dpr;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.round(w * dpr));
+  canvas.height = Math.max(1, Math.round(h * dpr));
+  if (doc) render();
+}
+function render() {
+  if (!doc) return;
+  const fl = current();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(view.zoom * view.dpr, 0, 0, view.zoom * view.dpr, view.panX * view.dpr, view.panY * view.dpr);
+  ctx.lineCap = "round";
+  drawGrid();
+  if ($("optGhost").checked) drawGhost(fl);
+  for (const s of fl.spaces) if (s.polygon.length >= 3) {
+    tracePoly(s.polygon, true);
+    ctx.fillStyle = SPACE_COLORS[s.type] || SPACE_COLORS.unknown;
+    ctx.globalAlpha = s.type === "void" ? 0.55 : 0.9;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  if (fl.outline.length >= 2) {
+    tracePoly(fl.outline, fl.outline.length >= 3);
+    ctx.strokeStyle = "#6e7681";
+    ctx.lineWidth = 1.25 / view.zoom;
+    ctx.setLineDash([6 / view.zoom, 4 / view.zoom]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  strokeWalls(fl.walls.filter((w) => !w.exterior), "#8b949e", 1.7);
+  strokeWalls(fl.walls.filter((w) => w.exterior), "#d0d7de", 2.4);
+  if ($("optLow").checked) {
+    strokeWalls(fl.walls.filter((w) => w.confidence < 0.5), "#d9a441", 2.2);
+    ctx.strokeStyle = "#d9a441";
+    ctx.lineWidth = 1.4 / view.zoom;
+    for (const s of fl.spaces) if (s.confidence < 0.5 && s.polygon.length >= 3) { tracePoly(s.polygon, true); ctx.stroke(); }
+  }
+  if (hover && (!sel || hover.kind !== sel.kind || hover.id !== sel.id)) drawHover(fl, hover);
+  if (sel) drawSelection(fl, sel);
+  for (const d of fl.doors) drawDoor(fl, d, false);
+  if (sel && sel.kind === "door") {
+    const d = byId(fl.doors, sel.id);
+    if (d) drawDoor(fl, d, true);
+  }
+  drawVerticals(fl);
+  drawDraft(fl);
+  drawOrigin();
+  drawLabels(fl);
+  updateStatus();
+}
+function tracePoly(poly, close) {
+  ctx.beginPath();
+  poly.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  if (close) ctx.closePath();
+}
+function strokeWalls(walls, color, px) {
+  if (!walls.length) return;
+  ctx.beginPath();
+  for (const w of walls) { ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = px / view.zoom;
+  ctx.stroke();
+}
+function drawGrid() {
+  const { w, h } = viewSize();
+  const [x0, y0] = screenToWorld(0, 0);
+  const [x1, y1] = screenToWorld(w, h);
+  let step = gridStep() > 0 ? gridStep() : 1;
+  while (step * view.zoom < 18) step *= 2;
+  if (step * view.zoom > 280) return;
+  const minx = Math.min(x0, x1), maxx = Math.max(x0, x1), miny = Math.min(y0, y1), maxy = Math.max(y0, y1);
+  ctx.beginPath();
+  for (let x = Math.floor(minx / step) * step; x <= maxx; x += step) { ctx.moveTo(x, miny); ctx.lineTo(x, maxy); }
+  for (let y = Math.floor(miny / step) * step; y <= maxy; y += step) { ctx.moveTo(minx, y); ctx.lineTo(maxx, y); }
+  ctx.strokeStyle = "rgba(139,148,158,0.18)";
+  ctx.lineWidth = 1 / view.zoom;
+  ctx.stroke();
+}
+function drawGhost(fl) {
+  doc.floors.forEach((other, i) => {
+    if (other.level === fl.level) return;
+    ctx.strokeStyle = GHOST[i % GHOST.length];
+    ctx.globalAlpha = 0.45;
+    ctx.lineWidth = 1.2 / view.zoom;
+    ctx.setLineDash([5 / view.zoom, 4 / view.zoom]);
+    if (other.outline.length >= 2) { tracePoly(other.outline, other.outline.length >= 3); ctx.stroke(); }
+    ctx.setLineDash([]);
+    for (const s of other.spaces) {
+      if ((s.type === "stairwell" || s.type === "elevator") && s.polygon.length >= 3) {
+        tracePoly(s.polygon, true);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  });
+}
+function drawDoor(fl, d, selected) {
+  const ax = doorAxis(fl, d);
+  const hx = ax[0] * d.width / 2, hy = ax[1] * d.width / 2;
+  const nx = -ax[1], ny = ax[0];
+  ctx.beginPath();
+  ctx.moveTo(d.x - hx, d.y - hy);
+  ctx.lineTo(d.x + hx, d.y + hy);
+  ctx.moveTo(d.x - hx - nx * 0.18, d.y - hy - ny * 0.18);
+  ctx.lineTo(d.x - hx + nx * 0.18, d.y - hy + ny * 0.18);
+  ctx.moveTo(d.x + hx - nx * 0.18, d.y + hy - ny * 0.18);
+  ctx.lineTo(d.x + hx + nx * 0.18, d.y + hy + ny * 0.18);
+  ctx.strokeStyle = selected ? "#58a6ff" : (d.confidence < 0.5 && $("optLow").checked ? "#d9a441" : (d.exterior_exit ? "#3fb950" : "#79c0ff"));
+  ctx.lineWidth = (selected ? 4.5 : 3) / view.zoom;
+  ctx.stroke();
+  if (!d.exterior_exit) return;
+  const r = 16 / view.zoom;
+  ctx.beginPath();
+  ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#3fb950";
+  ctx.fill();
+  ctx.lineWidth = 2.5 / view.zoom;
+  ctx.strokeStyle = "#7ee787";
+  ctx.stroke();
+  ctx.save();
+  ctx.fillStyle = "#04210c";
+  ctx.font = `700 ${11 / view.zoom}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("EXIT", d.x, d.y);
+  ctx.restore();
+}
+function drawDiamond(x, y, r, fill, stroke) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5 / view.zoom; ctx.stroke(); }
+}
+function drawVerticals(fl) {
+  const r = Math.max(0.32, 6 / view.zoom);
+  for (const v of doc.vertical_connections) {
+    for (const lv of v.floors) {
+      if (lv === fl.level) continue;
+      const p = vertPoint(v, lv), q = v.floors.includes(fl.level) ? vertPoint(v, fl.level) : null;
+      if (q && dist(p[0], p[1], q[0], q[1]) > 0.25) {
+        drawDiamond(p[0], p[1], r * 0.8, null, "#d9a441");
+      }
+    }
+    if (!v.floors.includes(fl.level)) continue;
+    const p = vertPoint(v, fl.level);
+    const selected = sel && sel.kind === "vertical" && sel.id === v.id;
+    const fill = selected ? "#58a6ff" : (v.type === "elevator" ? "#8b949e" : (v.type === "ramp" ? "#79c0ff" : "#3fb950"));
+    drawDiamond(p[0], p[1], r, fill, null);
+  }
+}
+function drawHover(fl, hit) {
+  ctx.strokeStyle = "rgba(88,166,255,0.7)";
+  ctx.lineWidth = 2 / view.zoom;
+  if (hit.kind === "wall") {
+    const w = byId(fl.walls, hit.id); if (!w) return;
+    ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+  } else if (hit.kind === "space") {
+    const s = byId(fl.spaces, hit.id); if (!s || s.polygon.length < 3) return;
+    tracePoly(s.polygon, true); ctx.stroke();
+  }
+}
+function drawSelection(fl, hit) {
+  ctx.strokeStyle = "#58a6ff";
+  ctx.fillStyle = "#58a6ff";
+  ctx.lineWidth = 2.4 / view.zoom;
+  const hs = 4.5 / view.zoom;
+  const handle = (x, y) => { ctx.fillRect(x - hs, y - hs, hs * 2, hs * 2); };
+  if (hit.kind === "wall") {
+    const w = byId(fl.walls, hit.id); if (!w) return;
+    ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
+    handle(w.x1, w.y1); handle(w.x2, w.y2);
+  } else if (hit.kind === "space") {
+    const s = byId(fl.spaces, hit.id); if (!s) return;
+    if (s.polygon.length >= 2) { tracePoly(s.polygon, true); ctx.stroke(); }
+    for (const p of s.polygon) handle(p[0], p[1]);
+  } else if (hit.kind === "outline") {
+    if (fl.outline.length >= 2) { tracePoly(fl.outline, true); ctx.stroke(); }
+    for (const p of fl.outline) handle(p[0], p[1]);
+  } else if (hit.kind === "vertical") {
+    const v = byId(doc.vertical_connections, hit.id); if (!v) return;
+    const p = vertPoint(v, fl.level);
+    drawDiamond(p[0], p[1], Math.max(0.42, 8 / view.zoom), null, "#58a6ff");
+  }
+}
+function drawDraft(fl) {
+  if (!draft || !mouseOn) return;
+  ctx.strokeStyle = "#58a6ff";
+  ctx.fillStyle = "#58a6ff";
+  ctx.lineWidth = 1.6 / view.zoom;
+  ctx.setLineDash([5 / view.zoom, 4 / view.zoom]);
+  if ((draft.tool === "wall" || draft.tool === "scale") && draft.points.length) {
+    const from = draft.points[0];
+    const p = draft.tool === "wall" ? snapPoint(mouse[0], mouse[1], { from }) : snapPoint(mouse[0], mouse[1]);
+    ctx.beginPath(); ctx.moveTo(from[0], from[1]); ctx.lineTo(p[0], p[1]); ctx.stroke();
+    const s = 3.5 / view.zoom;
+    ctx.fillRect(from[0] - s, from[1] - s, s * 2, s * 2);
+  } else if (draft.tool === "room" || draft.tool === "outline") {
+    const pts = draft.points;
+    if (pts.length) {
+      ctx.beginPath();
+      pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+      const p = snapPoint(mouse[0], mouse[1]);
+      ctx.lineTo(p[0], p[1]);
+      ctx.stroke();
+    }
+  }
+  ctx.setLineDash([]);
+}
+function drawOrigin() {
+  ctx.strokeStyle = "rgba(210,168,80,0.8)";
+  ctx.lineWidth = 1.2 / view.zoom;
+  const s = 8 / view.zoom;
+  ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke();
+}
+function drawLabels(fl) {
+  if (!$("optLabels").checked) return;
+  ctx.save();
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.font = "12px system-ui, Segoe UI, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#c9d1d9";
+  const { w, h } = viewSize();
+  for (const s of fl.spaces) {
+    if (s.polygon.length < 3) continue;
+    if ((s.type === "stairwell" || s.type === "elevator") && doc.vertical_connections.some((v) => v.floors.includes(fl.level) && pointInPoly(vertPoint(v, fl.level)[0], vertPoint(v, fl.level)[1], s.polygon))) continue;
+    let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    for (const p of s.polygon) {
+      const sx = p[0] * view.zoom + view.panX, sy = p[1] * view.zoom + view.panY;
+      if (sx < minx) minx = sx; if (sy < miny) miny = sy;
+      if (sx > maxx) maxx = sx; if (sy > maxy) maxy = sy;
+    }
+    if (maxx - minx < 28 || maxy - miny < 16) continue;
+    const c = centroid(s.polygon);
+    const sx = c[0] * view.zoom + view.panX, sy = c[1] * view.zoom + view.panY;
+    if (sx < -20 || sy < -10 || sx > w + 20 || sy > h + 10) continue;
+    ctx.fillText(s.label, sx, sy);
+  }
+  ctx.font = "11px system-ui, Segoe UI, sans-serif";
+  ctx.fillStyle = "#d2e3f5";
+  for (const v of doc.vertical_connections) {
+    if (!v.floors.includes(fl.level)) continue;
+    const p = vertPoint(v, fl.level);
+    const sx = p[0] * view.zoom + view.panX, sy = p[1] * view.zoom + view.panY;
+    ctx.fillText(v.name, sx, sy - 14);
+    for (const lv of v.floors) {
+      if (lv === fl.level) continue;
+      const q = vertPoint(v, lv);
+      if (dist(p[0], p[1], q[0], q[1]) <= 0.25) continue;
+      const qx = q[0] * view.zoom + view.panX, qy = q[1] * view.zoom + view.panY;
+      ctx.fillStyle = "#d9a441";
+      ctx.fillText("F" + lv, qx, qy - 12);
+      ctx.fillStyle = "#d2e3f5";
+    }
+  }
+  ctx.fillStyle = "rgba(210,168,80,0.9)";
+  const ox = view.panX, oy = view.panY;
+  if (ox > -10 && ox < w + 10 && oy > -10 && oy < h + 10) ctx.fillText("0,0", ox + 16, oy - 10);
+  ctx.restore();
+}
+
+function updateStatus() {
+  if (!doc) return;
+  const fl = current();
+  let left = mouseOn ? `${mouse[0].toFixed(2)}, ${mouse[1].toFixed(2)} m` : "move over the plan";
+  left += `   ${view.zoom.toFixed(1)} px/m   floor ${fl.level}   ${fl.walls.length} walls`;
+  if (draft && draft.points && draft.points.length && mouseOn) {
+    const from = draft.points[draft.points.length - 1];
+    const p = draft.tool === "wall" ? snapPoint(mouse[0], mouse[1], { from: draft.points[0] }) : snapPoint(mouse[0], mouse[1]);
+    const start = draft.tool === "wall" || draft.tool === "scale" ? draft.points[0] : from;
+    left += `   ${dist(start[0], start[1], p[0], p[1]).toFixed(2)} m`;
+  }
+  $("statLeft").textContent = left;
+  $("statHint").textContent = HINTS[tool] || "";
+}
+function updateChrome() {
+  if (!doc) return;
+  recomputeIssues();
+  const name = $("bname");
+  if (name) name.textContent = doc.building;
+  document.title = doc.building + " · Firesight editor";
+  $("saveLabel").textContent = saveState === "dirty" ? "unsaved" : (saveState === "server" ? "on server" : "saved");
+  $("saveLabel").style.color = saveState === "dirty" ? "var(--smoke)" : "var(--muted)";
+  $("btnUndo").disabled = history.length === 0 && !pendingBefore;
+  $("btnRedo").disabled = future.length === 0;
+  syncFloorSelect();
+  renderIssues();
+  const counts = $("counts");
+  if (counts) {
+    const fl = current();
+    const exits = fl.doors.filter((d) => d.exterior_exit).length;
+    counts.textContent = `${fl.walls.length} walls, ${fl.spaces.length} rooms, ${fl.doors.length} doors, ${exits} exits`;
+  }
+  for (const b of document.querySelectorAll("#tools button[data-tool]")) b.classList.toggle("on", b.dataset.tool === tool);
+  render();
+}
+function syncFloorSelect() {
+  const el = $("floorSel");
+  const key = doc.floors.map((f) => f.level).join(",");
+  if (el.dataset.levels !== key) {
+    el.dataset.levels = key;
+    el.replaceChildren(...doc.floors.map((f) => h("option", { value: String(f.level), text: "Floor " + f.level })));
+  }
+  if (el.value !== String(floorLevel)) el.value = String(floorLevel);
+}
+function renderIssues() {
+  const box = $("issueBox");
+  const count = $("issueCount");
+  if (!box) return;
+  const all = serverIssues.concat(localIssues);
+  if (count) count.textContent = String(all.length);
+  const floorOnly = $("optIssueFloor").checked;
+  let list = all.filter((it) => !floorOnly || it.server || it.level == null || it.level === floorLevel);
+  const extra = Math.max(0, list.length - 80);
+  list = list.slice(0, 80);
+  const nodes = [];
+  if (!list.length) nodes.push(h("div", { class: "muted", text: "No issues on this floor." }));
+  for (const it of list) {
+    if (it.sel || it.x != null) {
+      const b = h("button", { class: "issue", type: "button", text: it.text });
+      b.addEventListener("click", () => focusIssue(it));
+      nodes.push(b);
+    } else nodes.push(h("div", { class: "issue static", text: it.text }));
+  }
+  if (extra) nodes.push(h("div", { class: "muted", text: extra + " more" }));
+  box.replaceChildren(...nodes);
+}
+function focusIssue(it) {
+  if (it.level != null && doc.floors.some((f) => f.level === it.level)) floorLevel = it.level;
+  draft = null;
+  sel = it.sel ? { ...it.sel } : null;
+  buildInspector();
+  updateChrome();
+  if (it.x != null) centerOn(it.x, it.y);
+}
+function setSelection(next) {
+  sel = next;
+  buildInspector();
+  updateChrome();
+}
+function setTool(next) {
+  tool = next;
+  draft = null;
+  for (const b of document.querySelectorAll("#tools button[data-tool]")) b.classList.toggle("on", b.dataset.tool === tool);
+  canvas.style.cursor = tool === "pan" ? "grab" : (tool === "select" ? "default" : "crosshair");
+  updateStatus();
+  render();
+}
+
+function finishPolygon() {
+  if (!draft || draft.points.length < 3) { toast("Add at least 3 corners."); return; }
+  const fl = current();
+  const pts = draft.points.map((p) => [p[0], p[1]]);
+  if (draft.tool === "outline") {
+    edit(() => { fl.outline = pts; });
+    draft = null;
+    setSelection({ kind: "outline", part: "body" });
+    return;
+  }
+  const id = allocId(`F${fl.level}-S`);
+  edit(() => {
+    fl.spaces.push({ id, label: id, type: $("roomType").value || "classroom", polygon: pts, multi_floor: false, confidence: 1 });
+  });
+  draft = null;
+  setSelection({ kind: "space", id, part: "body" });
+  const lab = $("f-label");
+  if (lab) { lab.focus(); lab.select(); }
+}
+function deleteSelection() {
+  if (!sel) return;
+  const fl = current();
+  if (sel.kind === "space" && Number.isInteger(sel.vi)) {
+    const s = byId(fl.spaces, sel.id);
+    if (s && s.polygon.length > 3) {
+      edit(() => s.polygon.splice(sel.vi, 1));
+      sel = { kind: "space", id: sel.id, part: "body" };
+      buildInspector();
+      return;
+    }
+  }
+  if (sel.kind === "outline" && Number.isInteger(sel.vi) && fl.outline.length > 3) {
+    edit(() => fl.outline.splice(sel.vi, 1));
+    sel = { kind: "outline", part: "body" };
+    buildInspector();
+    return;
+  }
+  edit(() => {
+    if (sel.kind === "wall") fl.walls = fl.walls.filter((w) => w.id !== sel.id);
+    else if (sel.kind === "space") {
+      const id = sel.id;
+      fl.spaces = fl.spaces.filter((s) => s.id !== id);
+      for (const d of fl.doors) d.connects = (d.connects || []).filter((c) => c !== id);
+    } else if (sel.kind === "door") fl.doors = fl.doors.filter((d) => d.id !== sel.id);
+    else if (sel.kind === "vertical") doc.vertical_connections = doc.vertical_connections.filter((v) => v.id !== sel.id);
+    else if (sel.kind === "outline") fl.outline = [];
+  });
+  setSelection(null);
+}
+function insertVertex(kind) {
+  const fl = current();
+  const poly = kind === "outline" ? fl.outline : byId(fl.spaces, sel.id).polygon;
+  let best = null;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const pr = project(mouse[0], mouse[1], a[0], a[1], b[0], b[1]);
+    if (pr.d <= 10 / view.zoom && (!best || pr.d < best.d)) best = { i, x: pr.x, y: pr.y };
+  }
+  if (!best) return;
+  edit(() => poly.splice(best.i + 1, 0, [best.x, best.y]));
+  if (kind === "outline") sel = { kind: "outline", part: "vertex", vi: best.i + 1 };
+  else sel = { kind: "space", id: sel.id, part: "vertex", vi: best.i + 1 };
+  buildInspector();
+}
+
+function onDown(e) {
+  if (e.button === 1 || e.button === 2 || spaceDown || tool === "pan") {
+    drag = { kind: "pan", sx: e.clientX, sy: e.clientY, panX: view.panX, panY: view.panY };
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = "grabbing";
+    return;
+  }
+  if (e.button !== 0) return;
+  if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+  const [x, y] = eventWorld(e);
+  mouse = [x, y]; mouseOn = true;
+  if (e.detail === 2 && !hitTest(x, y)) { fit(); return; }
+  if (tool === "select") {
+    if (e.detail === 2 && sel && (sel.kind === "space" || sel.kind === "outline")) { insertVertex(sel.kind); return; }
+    const hit = hitTest(x, y);
+    if (!hit) {
+      drag = { kind: "pan-or-clear", sx: e.clientX, sy: e.clientY, panX: view.panX, panY: view.panY, moved: false };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    sel = hit;
+    drag = { kind: "move", hit, x0: x, y0: y, orig: takeSnap(hit), moved: false };
+    canvas.setPointerCapture(e.pointerId);
+    buildInspector();
+    render();
+    return;
+  }
+  if (tool === "wall") {
+    const p = snapPoint(x, y, { from: draft && draft.tool === "wall" ? draft.points[0] : null });
+    if (!draft) { draft = { tool: "wall", points: [p] }; render(); return; }
+    if (dist(p[0], p[1], draft.points[0][0], draft.points[0][1]) < 0.05) { draft = null; render(); return; }
+    const a = draft.points[0];
+    const exterior = $("optExterior").checked;
+    edit(() => current().walls.push({ id: allocId(`F${current().level}-W`), x1: a[0], y1: a[1], x2: p[0], y2: p[1], exterior, confidence: 1 }));
+    draft = { tool: "wall", points: [p] };
+    render();
+    return;
+  }
+  if (tool === "room" || tool === "outline") {
+    const p = snapPoint(x, y);
+    if (!draft || draft.tool !== tool) draft = { tool, points: [] };
+    if (draft.points.length >= 3 && dist(p[0], p[1], draft.points[0][0], draft.points[0][1]) <= 12 / view.zoom) { finishPolygon(); return; }
+    draft.points.push(p);
+    render();
+    return;
+  }
+  if (tool === "door") {
+    const fl = current();
+    const hit = nearestBoundary(fl, x, y, 1.25);
+    if (!hit) { toast("Click nearer to a wall."); return; }
+    const connects = inferConnects(fl, hit.x, hit.y, hit.axis);
+    const exit = $("optExit").checked || connects.includes("OUTSIDE");
+    const id = allocId(`F${fl.level}-D`);
+    edit(() => {
+      const door = { id, x: hit.x, y: hit.y, width: parseFloat($("doorWidth").value) || 0.9, connects, exterior_exit: exit, confidence: 1, axis: null };
+      if (doc.wall_style === "faces") door.axis = hit.axis.slice();
+      fl.doors.push(door);
+    });
+    setSelection({ kind: "door", id, part: "body" });
+    return;
+  }
+  if (tool === "exit") {
+    const fl = current();
+    const hitDoor = hitTest(x, y);
+    if (hitDoor && hitDoor.kind === "door") {
+      const id = hitDoor.id;
+      edit(() => {
+        const d = byId(fl.doors, id);
+        if (d) d.exterior_exit = !d.exterior_exit;
+      });
+      setSelection({ kind: "door", id, part: "body" });
+      return;
+    }
+    const hit = nearestBoundary(fl, x, y, 1.25);
+    if (!hit) { toast("Click nearer to a wall or the outline."); return; }
+    const space = spaceAt(fl, x, y) || nearestSpace(fl, x, y);
+    const connects = space ? [space.id, "OUTSIDE"] : ["OUTSIDE"];
+    const id = allocId(`F${fl.level}-D`);
+    edit(() => {
+      const door = { id, x: hit.x, y: hit.y, width: 1.0, connects, exterior_exit: true, confidence: 1, axis: null };
+      if (doc.wall_style === "faces") door.axis = hit.axis.slice();
+      fl.doors.push(door);
+    });
+    setSelection({ kind: "door", id, part: "body" });
+    return;
+  }
+  if (tool === "vertical") {
+    const p = snapPoint(x, y);
+    const id = allocId("V");
+    const floors = doc.floors.map((f) => f.level);
+    edit(() => doc.vertical_connections.push({
+      id, name: "Stairs", type: "stairs", x: p[0], y: p[1], floors: floors.slice(), positions: {}, confidence: 1,
+    }));
+    setSelection({ kind: "vertical", id, part: "body" });
+    return;
+  }
+  if (tool === "scale") {
+    const door = hitTest(x, y);
+    const p = snapPoint(x, y);
+    if (!draft) {
+      draft = { tool: "scale", points: [p], doorId: door && door.kind === "door" ? door.id : null };
+      if (draft.doorId) toast("Press Enter to scale from this door's width, or click the other point.");
+      render();
+      return;
+    }
+    const a = draft.points[0];
+    const d = dist(a[0], a[1], p[0], p[1]);
+    applyMeasuredScale(d, knownLength(), a[0], a[1], p[0], p[1]);
+    draft = null;
+    render();
+  }
+}
+function onMove(e) {
+  const [x, y] = eventWorld(e);
+  mouse = [x, y]; mouseOn = true;
+  if (drag && drag.kind === "pan") {
+    view.panX = drag.panX + (e.clientX - drag.sx);
+    view.panY = drag.panY + (e.clientY - drag.sy);
+    render();
+    return;
+  }
+  if (drag && drag.kind === "pan-or-clear") {
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 3) {
+      drag.kind = "pan";
+      drag.moved = true;
+      view.panX = drag.panX + (e.clientX - drag.sx);
+      view.panY = drag.panY + (e.clientY - drag.sy);
+    }
+    render();
+    return;
+  }
+  if (drag && drag.kind === "move") {
+    if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) * view.zoom < 3) { updateStatus(); return; }
+    if (!drag.moved) { capture(); drag.moved = true; }
+    placeDrag(x, y, e.altKey);
+    render();
+    return;
+  }
+  const hit = tool === "select" ? hitTest(x, y) : null;
+  const changed = !!hit !== !!hover || (hit && hover && (hit.kind !== hover.kind || hit.id !== hover.id || hit.vi !== hover.vi));
+  hover = hit;
+  canvas.style.cursor = spaceDown || tool === "pan" ? "grab" : (tool === "select" ? (hit ? "pointer" : "default") : "crosshair");
+  if (changed || draft) render();
+  else updateStatus();
+}
+function onUp(e) {
+  if (!drag) return;
+  const kind = drag.kind, moved = drag.moved;
+  if (kind === "move" && moved) {
+    const fl = current();
+    let bad = false;
+    if (drag.hit.kind === "wall") {
+      const w = byId(fl.walls, drag.hit.id);
+      if (w && dist(w.x1, w.y1, w.x2, w.y2) < 0.05) bad = true;
+    }
+    if (bad && pendingBefore) {
+      doc = pendingBefore.doc; floorLevel = pendingBefore.floor; sel = pendingBefore.sel; pendingBefore = null;
+      toast("That wall is too short.");
+      buildInspector();
+      updateChrome();
+    } else commit(true);
+    buildInspector();
+  } else if (kind === "move") {
+    pendingBefore = null;
+  } else if (kind === "pan-or-clear" && !moved) {
+    setSelection(null);
+  }
+  drag = null;
+  canvas.style.cursor = tool === "pan" ? "grab" : (tool === "select" ? "default" : "crosshair");
+  render();
+}
+
+function knownLength() {
+  const n = parseFloat($("knownM").value);
+  return Number.isFinite(n) && n > 0 ? n : 0.9;
+}
+function bindNum(input, get, apply) {
+  input.addEventListener("input", () => {
+    const n = parseFloat(input.value);
+    if (!Number.isFinite(n)) return;
+    capture();
+    apply(n);
+    saveState = "dirty";
+    $("saveLabel").textContent = "unsaved";
+    render();
+  });
+  input.addEventListener("blur", () => {
+    const n = parseFloat(input.value);
+    if (!Number.isFinite(n)) {
+      if (pendingBefore) { doc = pendingBefore.doc; floorLevel = pendingBefore.floor; sel = pendingBefore.sel; pendingBefore = null; }
+      input.value = String(r3(get()));
+      updateChrome();
+      return;
+    }
+    if (pendingBefore) commit(true);
+  });
+}
+function field(label, control) {
+  return h("label", { class: "field" }, [h("span", { text: label }), control]);
+}
+function bindText(input, apply) {
+  input.addEventListener("change", () => { edit(() => apply(input.value)); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); input.blur(); } });
+}
+function buildInspector() {
+  const root = $("inspector");
+  if (!doc) { root.replaceChildren(); return; }
+  const fl = current();
+  const nodes = [];
+  const name = h("input", { type: "text", value: doc.building, spellcheck: false });
+  bindText(name, (v) => { doc.building = v.trim() || "Building"; });
+  nodes.push(field("Building", name));
+  nodes.push(h("div", { class: "muted", id: "counts", text: "" }));
+  if (!sel) nodes.push(floorPanel(fl));
+  else nodes.push(selectionPanel(fl));
+  const details = h("details", { open: true });
+  const summary = h("summary");
+  summary.append("Issues ", h("span", { id: "issueCount", text: "0" }));
+  details.append(summary, h("div", { id: "issueBox" }));
+  nodes.push(details);
+  root.replaceChildren(...nodes);
+  renderIssues();
+  const counts = $("counts");
+  if (counts) {
+    const exits = fl.doors.filter((d) => d.exterior_exit).length;
+    counts.textContent = `${fl.walls.length} walls, ${fl.spaces.length} rooms, ${fl.doors.length} doors, ${exits} exits`;
+  }
+}
+function floorPanel(fl) {
+  const box = h("div");
+  box.append(h("p", { class: "hint", text: "Coordinates are meters in one shared frame. Y grows downward. Alignment is saved as zero so a later load does not shift the plan again." }));
+  const level = h("input", { type: "number", step: "1", value: String(fl.level) });
+  level.addEventListener("change", () => {
+    const lv = Math.round(parseFloat(level.value));
+    if (!Number.isInteger(lv)) { level.value = String(fl.level); return; }
+    if (lv === fl.level) return;
+    if (doc.floors.some((f) => f !== fl && f.level === lv)) {
+      toast("That floor number already exists.");
+      level.value = String(fl.level);
+      return;
+    }
+    const old = fl.level;
+    const ok = edit(() => {
+      fl.level = lv;
+      for (const v of doc.vertical_connections) {
+        v.floors = v.floors.map((x) => x === old ? lv : x);
+        if (v.positions && v.positions[String(old)]) {
+          v.positions[String(lv)] = v.positions[String(old)];
+          delete v.positions[String(old)];
+        }
+      }
+      floorLevel = lv;
+      doc.floors.sort((a, b) => a.level - b.level);
+    });
+    if (ok) buildInspector();
+  });
+  const height = h("input", { type: "number", step: "0.1", value: String(doc.floor_height_m) });
+  bindNum(height, () => doc.floor_height_m, (n) => { doc.floor_height_m = n; });
+  const style = h("select");
+  for (const s of ["centerline", "faces"]) style.append(h("option", { value: s, text: s }));
+  style.value = doc.wall_style === "faces" ? "faces" : "centerline";
+  style.addEventListener("change", () => edit(() => { doc.wall_style = style.value; }));
+  box.append(h("div", { class: "row2" }, [field("Floor level", level), field("Floor height (m)", height)]));
+  box.append(field("Wall style", style));
+  const scale = h("textarea", { value: doc.scale_method });
+  bindText(scale, (v) => { doc.scale_method = v; });
+  box.append(field("How scale was set", scale));
+  const notes = h("textarea", { value: fl.notes });
+  bindText(notes, (v) => { fl.notes = v; });
+  box.append(field("Floor notes", notes));
+  const global = h("textarea", { value: doc.global_notes });
+  bindText(global, (v) => { doc.global_notes = v; });
+  box.append(field("Building notes", global));
+  const actions = h("div", { class: "actions" });
+  actions.append(actionBtn("Add floor", addFloor));
+  actions.append(actionBtn("Duplicate floor", duplicateFloor));
+  actions.append(actionBtn("Delete floor", deleteFloor));
+  actions.append(actionBtn("Walls along rooms", () => {
+    let n = 0;
+    edit(() => { for (const s of fl.spaces) if (s.polygon.length >= 3) n += addWallsAlong(s.polygon, false, fl.doors); });
+    toast(n ? (n + " wall segments added.") : "Room edges already have walls.");
+  }));
+  actions.append(actionBtn("Walls along outline", () => {
+    if (fl.outline.length < 3) { toast("Draw an outline first."); return; }
+    let n = 0;
+    edit(() => { n = addWallsAlong(fl.outline, true, fl.doors); });
+    toast(n ? (n + " exterior segments added.") : "The outline already has walls.");
+  }));
+  actions.append(actionBtn("Cut gaps at doors", () => {
+    let n = 0; edit(() => { n = cutWallsAtDoors(fl); }); toast(n ? (n + " walls cut.") : "No door sits in the middle of a wall.");
+  }));
+  actions.append(actionBtn("Mark outline walls exterior", markExteriorWalls));
+  box.append(actions);
+  return box;
+}
+function actionBtn(text, fn) {
+  return h("button", { type: "button", text, onClick: fn });
+}
+function selectionPanel(fl) {
+  const box = h("div");
+  if (sel.kind === "wall") {
+    const w = byId(fl.walls, sel.id); if (!w) return box;
+    box.append(h("h2", { text: "Wall " + w.id }));
+    const len = dist(w.x1, w.y1, w.x2, w.y2);
+    box.append(h("div", { class: "muted", text: `Length ${len.toFixed(2)} m` }));
+    box.append(coordPair("Start", () => w.x1, (n) => { w.x1 = n; }, () => w.y1, (n) => { w.y1 = n; }));
+    box.append(coordPair("End", () => w.x2, (n) => { w.x2 = n; }, () => w.y2, (n) => { w.y2 = n; }));
+    box.append(checkEdit("Exterior", w.exterior, (v) => { w.exterior = v; }));
+    box.append(confidenceField(w));
+    box.append(idField(w, "wall"));
+  } else if (sel.kind === "space") {
+    const s = byId(fl.spaces, sel.id); if (!s) return box;
+    box.append(h("h2", { text: "Room " + s.id }));
+    const label = h("input", { id: "f-label", type: "text", value: s.label, spellcheck: false });
+    bindText(label, (v) => { s.label = v.trim() || s.id; });
+    box.append(field("Label", label));
+    const type = h("select");
+    const types = SPACE_TYPES.includes(s.type) ? SPACE_TYPES : SPACE_TYPES.concat([s.type]);
+    for (const t of types) type.append(h("option", { value: t, text: t }));
+    type.value = s.type;
+    type.addEventListener("change", () => edit(() => { s.type = type.value; }));
+    box.append(field("Type", type));
+    box.append(checkEdit("Multi-floor", s.multi_floor, (v) => { s.multi_floor = v; }));
+    box.append(confidenceField(s));
+    box.append(idField(s, "space"));
+    box.append(h("div", { class: "muted", text: `${s.polygon.length} corners. Double-click an edge to insert one. Delete removes the selected corner.` }));
+    const actions = h("div", { class: "actions" });
+    actions.append(actionBtn("Walls along this room", () => {
+      let n = 0; edit(() => { n = addWallsAlong(s.polygon, false, fl.doors); });
+      toast(n ? (n + " wall segments added.") : "Those edges already have walls.");
+    }));
+    actions.append(actionBtn("Use label as id", () => {
+      const next = `F${fl.level}-` + s.label.trim().replace(/\s+/g, "");
+      if (!next || next === s.id) return;
+      renameId(s, "space", next);
+    }));
+    box.append(actions);
+  } else if (sel.kind === "door") {
+    const d = byId(fl.doors, sel.id); if (!d) return box;
+    box.append(h("h2", { text: "Door " + d.id }));
+    box.append(coordPair("Position", () => d.x, (n) => { d.x = n; }, () => d.y, (n) => { d.y = n; }));
+    const width = h("input", { type: "number", step: "0.05", value: String(r3(d.width)) });
+    bindNum(width, () => d.width, (n) => { d.width = n; });
+    box.append(field("Width (m)", width));
+    const connects = h("input", { type: "text", value: (d.connects || []).join(", "), spellcheck: false });
+    connects.setAttribute("list", "spaceIds");
+    bindText(connects, (v) => { d.connects = v.split(",").map((s) => s.trim()).filter(Boolean); });
+    box.append(field("Connects", connects));
+    box.append(checkEdit("Exterior exit", d.exterior_exit, (v) => { d.exterior_exit = v; }));
+    box.append(confidenceField(d));
+    box.append(idField(d, "door"));
+    const actions = h("div", { class: "actions" });
+    actions.append(actionBtn("Relink spaces", () => {
+      const axis = doorAxis(fl, d);
+      edit(() => { d.connects = inferConnects(fl, d.x, d.y, axis); });
+      buildInspector();
+    }));
+    actions.append(actionBtn("Cut the wall here", () => {
+      let n = 0; edit(() => { n = cutWallsAtDoors(fl, d); });
+      toast(n ? "Wall cut at this door." : "This door is not in the middle of a wall.");
+    }));
+    actions.append(actionBtn("Scale from this width", () => {
+      applyMeasuredScale(d.width, knownLength(), d.x, d.y, d.x + d.width, d.y);
+      buildInspector();
+    }));
+    box.append(actions);
+    const list = h("datalist", { id: "spaceIds" });
+    list.append(h("option", { value: "OUTSIDE" }));
+    for (const s of fl.spaces) list.append(h("option", { value: s.id }));
+    box.append(list);
+  } else if (sel.kind === "vertical") {
+    const v = byId(doc.vertical_connections, sel.id); if (!v) return box;
+    box.append(h("h2", { text: v.type + " " + v.id }));
+    const nm = h("input", { type: "text", value: v.name, spellcheck: false });
+    bindText(nm, (val) => { v.name = val.trim() || v.id; });
+    box.append(field("Name", nm));
+    const type = h("select");
+    for (const t of VERT_TYPES) type.append(h("option", { value: t, text: t }));
+    type.value = v.type;
+    type.addEventListener("change", () => edit(() => { v.type = type.value; }));
+    box.append(field("Type", type));
+    const p = vertPoint(v, fl.level);
+    const x = h("input", { type: "number", step: "0.01", value: String(r3(p[0])) });
+    const y = h("input", { type: "number", step: "0.01", value: String(r3(p[1])) });
+    bindNum(x, () => vertPoint(v, fl.level)[0], (n) => setVert(v, fl.level, n, vertPoint(v, fl.level)[1], false));
+    bindNum(y, () => vertPoint(v, fl.level)[1], (n) => setVert(v, fl.level, vertPoint(v, fl.level)[0], n, false));
+    box.append(h("div", { class: "row2" }, [field("This floor x", x), field("This floor y", y)]));
+    box.append(h("div", { class: "muted", text: Object.keys(v.positions || {}).length ? "This floor has its own point." : "Every floor shares one point until you drag a floor." }));
+    box.append(h("div", { class: "muted", text: "Floors served" }));
+    for (const lv of doc.floors.map((f) => f.level)) {
+      const on = v.floors.includes(lv);
+      const input = h("input", { type: "checkbox", checked: on });
+      input.addEventListener("change", () => {
+        edit(() => {
+          const set = new Set(v.floors);
+          if (input.checked) set.add(lv); else set.delete(lv);
+          v.floors = [...set].sort((a, b) => a - b);
+          if (!input.checked && v.positions) delete v.positions[String(lv)];
+        });
+      });
+      box.append(h("label", { class: "check" }, [input, "Floor " + lv]));
+    }
+    box.append(confidenceField(v));
+    box.append(idField(v, "vertical"));
+    const actions = h("div", { class: "actions" });
+    actions.append(actionBtn("Use this point on every floor", () => {
+      const q = vertPoint(v, fl.level);
+      edit(() => { v.x = q[0]; v.y = q[1]; v.positions = {}; });
+      buildInspector();
+    }));
+    box.append(actions);
+  } else if (sel.kind === "outline") {
+    box.append(h("h2", { text: "Outline" }));
+    box.append(h("div", { class: "muted", text: `${fl.outline.length} corners. Double-click an edge to insert one.` }));
+    const actions = h("div", { class: "actions" });
+    actions.append(actionBtn("Walls along outline", () => {
+      if (fl.outline.length < 3) { toast("The outline needs at least 3 corners."); return; }
+      let n = 0; edit(() => { n = addWallsAlong(fl.outline, true, fl.doors); });
+      toast(n ? (n + " exterior segments added.") : "The outline already has walls.");
+    }));
+    box.append(actions);
+  }
+  const del = h("button", { type: "button", class: "warn", text: "Delete", onClick: deleteSelection });
+  box.append(h("div", { class: "actions" }, [del]));
+  return box;
+}
+function coordPair(label, getX, setX, getY, setY) {
+  const x = h("input", { type: "number", step: "0.01", value: String(r3(getX())) });
+  const y = h("input", { type: "number", step: "0.01", value: String(r3(getY())) });
+  bindNum(x, getX, setX);
+  bindNum(y, getY, setY);
+  return h("div", { class: "row2" }, [field(label + " x", x), field(label + " y", y)]);
+}
+function checkEdit(text, checked, apply) {
+  const input = h("input", { type: "checkbox", checked });
+  input.addEventListener("change", () => edit(() => apply(input.checked)));
+  return h("label", { class: "check" }, [input, text]);
+}
+function confidenceField(obj) {
+  const input = h("input", { type: "number", step: "0.05", min: "0", max: "1", value: String(obj.confidence) });
+  bindNum(input, () => obj.confidence, (n) => { obj.confidence = Math.max(0, Math.min(1, n)); });
+  return field("Confidence", input);
+}
+function idField(obj, kind) {
+  const input = h("input", { type: "text", value: obj.id, spellcheck: false });
+  input.addEventListener("change", () => renameId(obj, kind, input.value.trim()));
+  return field("Id", input);
+}
+function renameId(obj, kind, next) {
+  const old = obj.id;
+  if (!next || next === old) return;
+  if (allIds().has(next)) { toast("That id is already used."); buildInspector(); return; }
+  edit(() => {
+    obj.id = next;
+    if (kind === "space") {
+      for (const fl of doc.floors) for (const d of fl.doors) d.connects = (d.connects || []).map((c) => c === old ? next : c);
+    }
+    if (kind === "door") {
+      for (const m of doc.multi_floor_spaces || []) if (Array.isArray(m.door_ids)) m.door_ids = m.door_ids.map((c) => c === old ? next : c);
+    }
+  });
+  sel = { ...sel, id: next };
+  buildInspector();
+}
+function addFloor() {
+  const level = Math.max(...doc.floors.map((f) => f.level)) + 1;
+  const outline = current().outline.map((p) => [p[0], p[1]]);
+  edit(() => {
+    doc.floors.push({ level, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline, walls: [], spaces: [], doors: [], notes: "" });
+    doc.floors.sort((a, b) => a.level - b.level);
+    floorLevel = level;
+  });
+  setSelection(null);
+  fit();
+}
+function duplicateFloor() {
+  const src = current();
+  const level = Math.max(...doc.floors.map((f) => f.level)) + 1;
+  edit(() => {
+    const fl = structuredClone(src);
+    fl.level = level;
+    fl.alignment = { offset_x: 0, offset_y: 0, rotation_deg: 0 };
+    const reserved = allIds();
+    const take = (base) => {
+      let n = 1, id = base + n;
+      while (reserved.has(id)) { n += 1; id = base + n; }
+      reserved.add(id);
+      return id;
+    };
+    const map = new Map();
+    for (const s of fl.spaces) {
+      let id = `F${level}-` + String(s.id).replace(/^F\d+-/, "");
+      if (!id || id === `F${level}-` || reserved.has(id)) id = take(`F${level}-S`);
+      else reserved.add(id);
+      map.set(s.id, id);
+      s.id = id;
+    }
+    for (const w of fl.walls) w.id = take(`F${level}-W`);
+    for (const d of fl.doors) {
+      d.id = take(`F${level}-D`);
+      d.connects = (d.connects || []).map((c) => map.get(c) || c);
+    }
+    doc.floors.push(fl);
+    doc.floors.sort((a, b) => a.level - b.level);
+    floorLevel = level;
+  });
+  setSelection(null);
+  fit();
+}
+function deleteFloor() {
+  if (doc.floors.length < 2) { toast("Keep at least one floor."); return; }
+  if (!confirm("Delete floor " + floorLevel + "?")) return;
+  const lv = floorLevel;
+  edit(() => {
+    doc.floors = doc.floors.filter((f) => f.level !== lv);
+    for (const v of doc.vertical_connections) {
+      v.floors = v.floors.filter((f) => f !== lv);
+      if (v.positions) delete v.positions[String(lv)];
+    }
+    floorLevel = doc.floors[0].level;
+  });
+  setSelection(null);
+  fit();
+}
+
+function parseJsonText(text) {
+  text = text.trim();
+  const fence = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) text = fence[1];
+  return JSON.parse(text);
+}
+function dirtyGuard() {
+  if (saveState === "saved") return true;
+  return confirm("Discard unsaved edits?");
+}
+async function openFile(file) {
+  let raw;
+  try { raw = parseJsonText(await file.text()); }
+  catch (err) { toast("Invalid JSON: " + err.message); return; }
+  if (!dirtyGuard()) return;
+  try { loadRaw(raw, { setName: true }); }
+  catch (err) { toast(err.message); return; }
+  toast("Loaded " + doc.building);
+}
+async function readError(r) {
+  const t = await r.text();
+  try { const j = JSON.parse(t); if (j.detail) return typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); }
+  catch { /* response was not JSON */ }
+  return t || r.statusText;
+}
+async function pushToViewer() {
+  if (busy) return;
+  busy = true;
+  try {
+    const r = await fetch("/api/building", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(exportDoc()) });
+    if (!r.ok) throw new Error(await readError(r));
+    const data = await r.json();
+    serverOn = true; $("serverDot").classList.add("on");
+    serverIssues = (data.warnings || []).map((text) => ({ text, priority: 0, server: true }));
+    saveState = "server";
+    updateChrome();
+    toast(data.warnings && data.warnings.length ? ("Viewer updated. " + data.warnings.length + " warnings.") : "Viewer updated.");
+  } catch (err) {
+    serverOn = false; $("serverDot").classList.remove("on");
+    toast("Send failed. " + err.message);
+  } finally { busy = false; }
+}
+async function saveFile() {
+  const name = $("saveName").value.trim();
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name) || name.startsWith(".")) {
+    toast("File name: letters, digits, and _ . - only.");
+    return;
+  }
+  await pushToViewer();
+  if (saveState === "dirty") return;
+  if (busy) return;
+  busy = true;
+  try {
+    const r = await fetch("/api/building/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+    if (!r.ok) throw new Error(await readError(r));
+    const data = await r.json();
+    saveState = "saved";
+    updateChrome();
+    toast("Saved " + data.path);
+  } catch (err) { toast("Save failed. " + err.message); }
+  finally { busy = false; }
+}
+function download() {
+  const data = exportDoc();
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  const name = slugName($("saveName").value || doc.building) + ".json";
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  saveState = "saved";
+  updateChrome();
+  toast("Downloaded " + name);
+}
+async function reloadServer() {
+  if (!dirtyGuard()) return;
+  try {
+    const r = await fetch("/api/building");
+    if (!r.ok) throw new Error(await readError(r));
+    loadRaw(await r.json(), { fromServer: true, setName: true });
+    serverOn = true; $("serverDot").classList.add("on");
+    toast("Loaded the map from the viewer.");
+  } catch (err) {
+    serverOn = false; $("serverDot").classList.remove("on");
+    toast("Reload failed. " + err.message);
+  }
+}
+async function serverCheck() {
+  if (saveState === "dirty") { toast("Send to the viewer first, then check."); return; }
+  try {
+    const r = await fetch("/api/check");
+    if (!r.ok) throw new Error(await readError(r));
+    const data = await r.json();
+    serverIssues = (data.issues || []).map((text) => ({ text, priority: 0, server: true }));
+    updateChrome();
+    toast(serverIssues.length ? (serverIssues.length + " server checks.") : "Server check found nothing.");
+  } catch (err) { toast("Check failed. " + err.message); }
+}
+function goSearch(q) {
+  q = q.trim().toLowerCase();
+  if (!q) return;
+  if (searchQ !== q) {
+    searchQ = q; searchHits = []; searchAt = 0;
+    const add = (level, kind, id, label) => {
+      const blob = (id + " " + (label || "")).toLowerCase();
+      if (blob.includes(q)) searchHits.push({ level, kind, id });
+    };
+    for (const fl of doc.floors) {
+      for (const s of fl.spaces) add(fl.level, "space", s.id, s.label);
+      for (const d of fl.doors) {
+        if (q === "exit" && d.exterior_exit) searchHits.push({ level: fl.level, kind: "door", id: d.id });
+        else add(fl.level, "door", d.id, "");
+      }
+      for (const w of fl.walls) add(fl.level, "wall", w.id, "");
+    }
+    for (const v of doc.vertical_connections) {
+      if ((v.id + " " + v.name).toLowerCase().includes(q)) {
+        const lv = v.floors.find((n) => doc.floors.some((f) => f.level === n));
+        searchHits.push({ level: lv == null ? floorLevel : lv, kind: "vertical", id: v.id });
+      }
+    }
+  } else if (searchHits.length) searchAt = (searchAt + 1) % searchHits.length;
+  const hit = searchHits[searchAt];
+  if (!hit) { toast("Nothing matches."); return; }
+  if (doc.floors.some((f) => f.level === hit.level)) floorLevel = hit.level;
+  setSelection({ kind: hit.kind, id: hit.id, part: "body" });
+  const fl = current();
+  let p = [0, 0];
+  if (hit.kind === "space") { const s = byId(fl.spaces, hit.id); if (s) p = centroid(s.polygon); }
+  else if (hit.kind === "door") { const d = byId(fl.doors, hit.id); if (d) p = [d.x, d.y]; }
+  else if (hit.kind === "wall") { const w = byId(fl.walls, hit.id); if (w) p = [(w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2]; }
+  else if (hit.kind === "vertical") { const v = byId(doc.vertical_connections, hit.id); if (v) p = vertPoint(v, fl.level); }
+  centerOn(p[0], p[1]);
+  toast(`${searchAt + 1} of ${searchHits.length}: ${hit.id}`);
+}
+
+function typing(e) {
+  const t = e.target;
+  return t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+}
+function onKey(e) {
+  shiftDown = e.shiftKey;
+  if (e.key === " " && !typing(e)) { spaceDown = true; e.preventDefault(); return; }
+  if (typing(e)) return;
+  if (e.repeat && !e.key.startsWith("Arrow")) return;
+  const cmd = e.ctrlKey || e.metaKey;
+  if (cmd && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (cmd && e.key.toLowerCase() === "y") { e.preventDefault(); redo(); return; }
+  if (cmd && e.key.toLowerCase() === "s") { e.preventDefault(); e.shiftKey ? download() : pushToViewer(); return; }
+  if (e.key === "Escape") { draft = null; setSelection(null); return; }
+  if (e.key === "Enter") {
+    if (draft && (draft.tool === "room" || draft.tool === "outline")) { finishPolygon(); return; }
+    if (draft && draft.tool === "wall") { draft = null; render(); return; }
+    if (draft && draft.tool === "scale" && draft.doorId) {
+      const d = byId(current().doors, draft.doorId);
+      if (d) applyMeasuredScale(d.width, knownLength(), d.x, d.y, d.x + (d.axis ? d.axis[0] : 1) * d.width, d.y + (d.axis ? d.axis[1] : 0) * d.width);
+      draft = null; render(); return;
+    }
+  }
+  if (e.key === "Backspace" && draft && draft.points && draft.points.length) {
+    e.preventDefault(); draft.points.pop(); if (!draft.points.length) draft = null; render(); return;
+  }
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); return; }
+  if (e.key.startsWith("Arrow") && sel) {
+    e.preventDefault();
+    const step = e.shiftKey ? 1 : (gridStep() || 0.1);
+    const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    edit(() => moveSel(dir[0] * step, dir[1] * step, e.altKey));
+    buildInspector();
+    return;
+  }
+  if (cmd || e.altKey) return;
+  const tools = { v: "select", h: "pan", w: "wall", r: "room", d: "door", x: "exit", t: "vertical", o: "outline", k: "scale" };
+  if (tools[e.key.toLowerCase()]) { setTool(tools[e.key.toLowerCase()]); return; }
+  if (e.key === "f" || e.key === "F") { fit(); return; }
+  if (e.key === "+" || e.key === "=") { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1.15); return; }
+  if (e.key === "-" || e.key === "_") { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1 / 1.15); return; }
+}
+function onKeyUp(e) {
+  shiftDown = e.shiftKey;
+  if (e.key === " ") spaceDown = false;
+  if (draft) render();
+}
+
+function bind() {
+  const typeSel = $("roomType");
+  for (const t of SPACE_TYPES) typeSel.append(h("option", { value: t, text: t }));
+  typeSel.value = "classroom";
+  for (const b of document.querySelectorAll("#tools button[data-tool]")) {
+    b.addEventListener("click", () => { setTool(b.dataset.tool); b.blur(); });
+  }
+  $("floorSel").addEventListener("change", () => { floorLevel = Number($("floorSel").value); draft = null; setSelection(null); fit(); });
+  $("btnUndo").addEventListener("click", undo);
+  $("btnRedo").addEventListener("click", redo);
+  $("btnNew").addEventListener("click", () => { if (!dirtyGuard()) return; loadRaw(blankBuilding(), { setName: true }); toast("New map. Draw rooms, doors, and exits."); });
+  $("btnOpen").addEventListener("click", () => $("file").click());
+  $("file").addEventListener("change", () => { const f = $("file").files && $("file").files[0]; $("file").value = ""; if (f) openFile(f); });
+  $("btnReload").addEventListener("click", reloadServer);
+  $("btnDownload").addEventListener("click", download);
+  $("btnSave").addEventListener("click", saveFile);
+  $("btnPush").addEventListener("click", pushToViewer);
+  $("btnCheck").addEventListener("click", serverCheck);
+  $("btnFit").addEventListener("click", () => fit());
+  $("btnZoomIn").addEventListener("click", () => { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1.15); });
+  $("btnZoomOut").addEventListener("click", () => { const { w, h } = viewSize(); zoomAt(w / 2, h / 2, 1 / 1.15); });
+  for (const id of ["optLabels", "optGhost", "optLow", "optCorners", "optIssueFloor", "snap"]) {
+    $(id).addEventListener("change", () => { if (id === "optIssueFloor") renderIssues(); else render(); });
+  }
+  $("search").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); goSearch($("search").value); } });
+  canvas.addEventListener("pointerdown", onDown);
+  canvas.addEventListener("pointermove", onMove);
+  canvas.addEventListener("pointerup", onUp);
+  canvas.addEventListener("pointercancel", onUp);
+  canvas.addEventListener("pointerleave", () => { mouseOn = false; hover = null; if (!drag) render(); });
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect();
+    zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0015));
+  }, { passive: false });
+  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  window.addEventListener("keydown", onKey);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("resize", resize);
+  new ResizeObserver(() => resize()).observe($("stage"));
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files && e.dataTransfer.files[0]; if (f) openFile(f); });
+  window.addEventListener("beforeunload", (e) => {
+    if (location.hash === "#selftest" || saveState === "saved") return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+  window.addEventListener("error", (e) => { if (location.hash !== "#selftest") toast(e.message); });
+}
+
+function runSelfTest() {
+  const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
+  $("snap").value = "0";
+  $("optCorners").checked = false;
+  $("scaleScope").value = "all";
+  loadRaw({
+    building: "Bake",
+    floors: [{
+      level: 1, alignment: { offset_x: 10, offset_y: 0, rotation_deg: 90 },
+      outline: [[0, 0], [1, 0], [1, 1]],
+      walls: [{ id: "W", x1: 0, y1: 0, x2: 1, y2: 0, exterior: false, confidence: 1 }],
+      spaces: [],
+      doors: [{ id: "D", x: 1, y: 0, width: 0.9, connects: ["OUTSIDE"], exterior_exit: true, axis: [1, 0], confidence: 1 }],
+    }],
+    vertical_connections: [{ id: "V", name: "S", type: "stairs", x: 3, y: 4, floors: [1, 2], positions: { "1": [0, 0] }, confidence: 1 }],
+  }, { silent: true, fromServer: false });
+  const w = current().walls[0];
+  assert(Math.abs(w.x2 - 10) < 1e-9 && Math.abs(w.y2 - 1) < 1e-9, "wall baked");
+  assert(Math.abs(w.x1 - 10) < 1e-9 && Math.abs(w.y1) < 1e-9, "wall start baked");
+  const d = current().doors[0];
+  assert(Math.abs(d.x - 10) < 1e-9 && Math.abs(d.y - 1) < 1e-9, "door baked");
+  assert(Math.abs(d.axis[0]) < 1e-9 && Math.abs(d.axis[1] - 1) < 1e-9, "axis baked");
+  const v = doc.vertical_connections[0];
+  assert(v.x === 3 && v.y === 4, "vertical xy stays shared");
+  assert(Math.abs(v.positions["1"][0] - 10) < 1e-9 && Math.abs(v.positions["1"][1]) < 1e-9, "position baked");
+  assert(current().alignment.rotation_deg === 0 && current().alignment.offset_x === 0, "alignment zeroed");
+  const dumped = exportDoc();
+  assert(!dumped.grid && dumped.floors[0].alignment.offset_x === 0, "export frame");
+  assert(dumped.floors[0].doors[0].axis, "export keeps axis");
+  const x2 = dumped.floors[0].walls[0].x2;
+  loadRaw(dumped, { silent: true, fromServer: false });
+  assert(Math.abs(current().walls[0].x2 - x2) < 1e-6, "reload is stable");
+
+  loadRaw({
+    building: "Server", grid: { cell: 0.5 },
+    floors: [{
+      level: 1, alignment: { offset_x: 5, offset_y: 0, rotation_deg: 90 },
+      outline: [[0, 0], [10, 0], [10, 10]],
+      walls: [{ id: "W", x1: 0, y1: 1, x2: 4, y2: 1, exterior: true, confidence: 1 }],
+      spaces: [], doors: [{ id: "D", x: 1, y: 1, width: 0.9, connects: [], exterior_exit: false, axis: null, confidence: 1 }],
+    }],
+    vertical_connections: [],
+  }, { silent: true, fromServer: true });
+  assert(current().walls[0].x1 === 0 && current().walls[0].y1 === 1, "server coords stay put");
+  assert(current().alignment.rotation_deg === 0, "server alignment cleared");
+
+  const fixture = () => ({
+    building: "Scale",
+    floors: [
+      { level: 1, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline: [[0, 0], [10, 0], [10, 4], [0, 4]],
+        walls: [{ id: "W", x1: 0, y1: 0, x2: 2, y2: 0, exterior: true, confidence: 1 }], spaces: [],
+        doors: [{ id: "D", x: 1, y: 0, width: 2, connects: ["OUTSIDE"], exterior_exit: true, confidence: 1 }] },
+      { level: 2, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline: [[0, 0], [10, 0], [10, 4]],
+        walls: [], spaces: [], doors: [] },
+    ],
+    vertical_connections: [{ id: "V", name: "Stair", type: "stairs", x: 1, y: 1, floors: [1, 2], confidence: 1 }],
+  });
+  loadRaw(fixture(), { silent: true });
+  $("scaleScope").value = "all";
+  applyMeasuredScale(2, 1, 0, 0, 2, 0);
+  assert(Math.abs(current().walls[0].x1 - 0.5) < 1e-9 && Math.abs(current().walls[0].x2 - 1.5) < 1e-9, "scale wall");
+  assert(Math.abs(current().doors[0].width - 1) < 1e-9, "scale width");
+  assert(Math.abs(doc.vertical_connections[0].y - 0.5) < 1e-9, "scale vertical");
+  assert(Math.abs(doc.floors[1].outline[1][0] - 5.5) < 1e-9, "scale other floor");
+  undo();
+  assert(Math.abs(current().walls[0].x2 - 2) < 1e-9, "undo scale");
+  redo();
+  assert(Math.abs(current().walls[0].x2 - 1.5) < 1e-9, "redo scale");
+
+  loadRaw(fixture(), { silent: true });
+  $("scaleScope").value = "floor";
+  applyMeasuredScale(2, 1, 0, 0, 2, 0);
+  assert(Math.abs(doc.floors[1].outline[1][0] - 10) < 1e-9, "other floor stays");
+  assert(Math.abs(doc.vertical_connections[0].x - 1) < 1e-9 && Math.abs(doc.vertical_connections[0].y - 1) < 1e-9, "shared point stays");
+  const p1 = vertPoint(doc.vertical_connections[0], 1);
+  assert(Math.abs(p1[1] - 0.5) < 1e-9, "this floor stair moved");
+
+  const room = [[0, 0], [10, 0], [10, 10], [0, 10]];
+  const hall = [[0, 10], [10, 10], [10, 14], [0, 14]];
+  loadRaw({
+    building: "Links",
+    floors: [{
+      level: 1, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline: [[0, 0], [10, 0], [10, 14], [0, 14]],
+      walls: [{ id: "W", x1: 0, y1: 10, x2: 10, y2: 10, exterior: false, confidence: 1 }],
+      spaces: [
+        { id: "R", label: "R", type: "classroom", polygon: room, multi_floor: false, confidence: 1 },
+        { id: "H", label: "Hall", type: "hallway", polygon: hall, multi_floor: false, confidence: 1 },
+      ],
+      doors: [],
+    }],
+    vertical_connections: [],
+  }, { silent: true });
+  const links = inferConnects(current(), 5, 10, [1, 0]);
+  assert(links.includes("R") && links.includes("H"), "infer connects " + links.join(","));
+  let added = 0;
+  edit(() => { added = addWallsAlong([[2, 2], [6, 2], [6, 5], [2, 5]], false, [{ x: 4, y: 2, width: 1 }]); });
+  assert(added === 5, "walls along room with a door gap, got " + added);
+  loadRaw({
+    building: "Cut",
+    floors: [{
+      level: 1, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline: [],
+      walls: [{ id: "W", x1: 0, y1: 0, x2: 10, y2: 0, exterior: false, confidence: 1 }],
+      spaces: [], doors: [{ id: "D", x: 5, y: 0, width: 2, connects: [], exterior_exit: false, confidence: 1 }],
+    }],
+    vertical_connections: [],
+  }, { silent: true });
+  const cuts = cutWallsAtDoors(current());
+  assert(cuts === 1 && current().walls.length === 2, "cut count");
+  const ends = current().walls.map((ww) => [ww.x1, ww.x2].sort((a, b) => a - b));
+  assert(ends.some((e) => Math.abs(e[1] - 4) < 1e-6) && ends.some((e) => Math.abs(e[0] - 6) < 1e-6), "cut ends");
+
+  loadRaw({
+    building: "Dup",
+    floors: [{
+      level: 1, alignment: { offset_x: 0, offset_y: 0, rotation_deg: 0 }, outline: [[0, 0], [4, 0], [4, 4]],
+      walls: [], spaces: [{ id: "F1-A", label: "A", type: "office", polygon: [[0, 0], [2, 0], [2, 2]], multi_floor: false, confidence: 1 }],
+      doors: [{ id: "F1-D1", x: 1, y: 2, width: 0.9, connects: ["F1-A", "OUTSIDE"], exterior_exit: true, confidence: 1 }],
+    }],
+    vertical_connections: [],
+  }, { silent: true });
+  duplicateFloor();
+  const fl2 = doc.floors.find((f) => f.level === 2);
+  assert(fl2 && fl2.spaces[0].id !== "F1-A", "new space id");
+  assert(fl2.doors[0].connects.includes(fl2.spaces[0].id) && fl2.doors[0].connects.includes("OUTSIDE"), "connects remapped");
+
+  loadRaw(fixture(), { silent: true });
+  $("snap").value = "0";
+  $("optCorners").checked = false;
+  const before = current().walls.length;
+  setTool("wall");
+  clickWorld(12, 3);
+  clickWorld(15, 3);
+  assert(current().walls.length === before + 1, "pointer adds a wall");
+  const last = current().walls[current().walls.length - 1];
+  assert(Math.abs(last.x1 - 12) < 1e-6 && Math.abs(last.x2 - 15) < 1e-6 && Math.abs(last.y1 - 3) < 1e-6, "pointer coordinates");
+  $("selftest").textContent = "PASS";
+}
+function clickWorld(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  const [sx, sy] = worldToScreen(x, y);
+  const base = { bubbles: true, cancelable: true, clientX: rect.left + sx, clientY: rect.top + sy, pointerId: 1, pointerType: "mouse", button: 0 };
+  canvas.dispatchEvent(new PointerEvent("pointerdown", { ...base, buttons: 1 }));
+  canvas.dispatchEvent(new PointerEvent("pointerup", { ...base, buttons: 0 }));
+}
+
+bind();
+resize();
+if (location.hash === "#selftest") {
+  try { runSelfTest(); }
+  catch (err) { $("selftest").textContent = "FAIL " + (err && err.stack ? err.stack : err); }
+  finally { saveState = "saved"; }
+} else {
+  (async () => {
+    try {
+      const r = await fetch("/api/building");
+      if (!r.ok) throw new Error(await r.text());
+      loadRaw(await r.json(), { fromServer: true, setName: true });
+      serverOn = true; $("serverDot").classList.add("on");
+    } catch {
+      serverOn = false;
+      loadRaw(blankBuilding(), { setName: true, silent: true });
+      toast("No server yet. Open a JSON file, or start uvicorn and reload.");
+    }
+  })();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Firesight</title>
+<script type="module">
+import { createFiresightAgent } from "./voice-agent.js";
+window.__firesightCreateAgent = createFiresightAgent;
+</script>
+<style>
+  :root {
+    --bg: #0e1116;
+    --ink: #ffffff;
+    --muted: #d5dde8;
+    --line: #ffffff;
+    --safe: #137333;
+    --trap: #9d1c1c;
+    --go: #1f6feb;
+    --warn: #f0c14a;
+    --warn-ink: #1a1200;
+    --bad: #c41515;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 18px/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden; overscroll-behavior: none;
+  }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; touch-action: manipulation; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+  button:active { transform: scale(0.98); }
+  [hidden] { display: none !important; }
+
+  .screen {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    background: var(--bg); z-index: 2;
+    padding-top: env(safe-area-inset-top);
+  }
+  .pad { padding: 18px 16px 8px; }
+  .eyebrow {
+    margin: 0 0 6px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em;
+    color: #9fd6ff;
+  }
+  h1 { margin: 0 0 8px; font-size: 34px; line-height: 1.1; }
+  .lead { margin: 8px 0 18px; font-size: 18px; color: var(--muted); }
+  #search {
+    width: 100%; min-height: 52px; border-radius: 12px; border: 2px solid var(--line);
+    background: #0b0e13; padding: 0 14px; font-size: 18px;
+  }
+  #pickMsg {
+    margin: 12px 0 0; padding: 12px; border-radius: 12px;
+    background: var(--warn); color: var(--warn-ink); font-weight: 800;
+  }
+  #roomList { flex: 1; overflow: auto; padding: 8px 16px 24px; -webkit-overflow-scrolling: touch; }
+  .empty { color: var(--muted); font-weight: 700; }
+  button.room {
+    width: 100%; min-height: 64px; margin: 0 0 8px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    text-align: left; border-radius: 12px; border: 2px solid #3d4654; background: #161b22;
+  }
+  button.room b { font-size: 20px; }
+  button.room span { color: var(--muted); font-size: 16px; font-weight: 700; }
+  button.go {
+    width: 100%; min-height: 68px; border: 0; border-radius: 14px;
+    background: var(--go); font-size: 24px; font-weight: 800;
+  }
+  button.go:disabled { opacity: 0.45; }
+  button.ghost {
+    width: 100%; min-height: 52px; margin-top: 10px; border-radius: 14px;
+    border: 2px solid var(--line); background: transparent; font-size: 18px; font-weight: 700;
+  }
+  #readyMeta { margin: 0 0 4px; color: #9fd6ff; font-weight: 800; }
+
+  #live { position: fixed; inset: 0; background: #05070a; overflow: hidden; z-index: 1; }
+  #cam, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #cam { object-fit: cover; background: #05070a; }
+  #overlay { z-index: 1; pointer-events: none; }
+
+  #top { position: absolute; top: 0; left: 0; right: 0; z-index: 4; padding-top: env(safe-area-inset-top); }
+  #banner {
+    margin: 10px 12px 0; padding: 12px 14px; border-radius: 14px;
+    background: rgba(8, 10, 14, 0.88); border: 2px solid rgba(255, 255, 255, 0.85);
+  }
+  #banner.bad { background: var(--bad); border-color: #ffd2d2; }
+  #hazardLine, #actionLine { font-size: 24px; font-weight: 800; line-height: 1.15; }
+  #exitLine { margin-top: 4px; font-size: 16px; font-weight: 700; color: #e8eef5; }
+  #where { margin: 8px 12px 0; font-size: 15px; font-weight: 800; text-shadow: 0 1px 2px #000; }
+  #agentCaption {
+    margin: 8px 12px 0; padding: 8px 12px; border-radius: 12px;
+    background: rgba(8, 10, 14, 0.88); border: 2px solid rgba(255, 255, 255, 0.75);
+    font-size: 16px; font-weight: 700; text-align: center;
+  }
+  .chip {
+    display: inline-block; margin: 8px 0 0 12px; padding: 6px 10px; border-radius: 999px;
+    background: rgba(0, 0, 0, 0.78); border: 2px solid #fff; font-size: 14px; font-weight: 800;
+  }
+  #chipUnsure {
+    display: block; max-width: calc(100% - 24px); margin: 8px 12px 0;
+    white-space: normal; line-height: 1.35; font-size: 15px; font-weight: 700;
+    background: rgba(14, 17, 22, 0.9); border-color: rgba(255, 255, 255, 0.8);
+  }
+  #offline {
+    margin: 8px 12px 0; padding: 10px 12px; border-radius: 12px;
+    background: var(--warn); color: var(--warn-ink); font-weight: 800; font-size: 18px;
+  }
+
+  #flash {
+    position: absolute; top: 46%; left: 50%; z-index: 6; pointer-events: none;
+    transform: translate(-50%, -50%);
+    max-width: calc(100% - 28px); text-align: center;
+    background: #fff; color: #111; font-size: 28px; font-weight: 800;
+    padding: 14px 18px; border-radius: 14px;
+  }
+  #flash.show { animation: pop 2.2s ease forwards; }
+  @keyframes pop {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  #out {
+    position: absolute; left: 16px; right: 16px; top: 42%; z-index: 6;
+    transform: translateY(-50%); text-align: center; pointer-events: none;
+  }
+  .out-card {
+    background: var(--safe); border: 2px solid #fff; border-radius: 16px; padding: 18px 14px;
+  }
+  .out-card h2 { margin: 0; font-size: 34px; }
+  .out-card p { margin: 6px 0 0; font-size: 18px; font-weight: 700; }
+
+  #minimap {
+    position: absolute; right: 10px; z-index: 4;
+    bottom: calc(264px + env(safe-area-inset-bottom));
+    width: 40vw; height: min(40vw, 30vh);
+    border: 2px solid #fff; border-radius: 12px; background: var(--bg);
+    touch-action: manipulation;
+  }
+  #toast {
+    position: absolute; left: 12px; right: 12px; z-index: 7; text-align: center;
+    bottom: calc(268px + env(safe-area-inset-bottom));
+    background: #fff; color: #111; font-weight: 800; padding: 12px 14px; border-radius: 12px;
+  }
+  #bar {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.82) 28%);
+  }
+  #bar .row { display: flex; gap: 8px; }
+  #bar button {
+    flex: 1; min-height: 52px; border-radius: 12px; border: 2px solid #fff;
+    background: rgba(10, 12, 16, 0.9); font-size: 16px; font-weight: 800;
+  }
+  #btnWalk.on { background: var(--go); }
+  #btnMute.on { background: #3a4250; }
+  #bar button#btnTalk {
+    flex: 0 0 64px; width: 64px; height: 64px; min-height: 64px;
+    padding: 0; border-radius: 50%; font-size: 14px; line-height: 1;
+  }
+  #bar button#btnTalk.on { background: var(--go); }
+  #bar button#btnTalk.listening { box-shadow: 0 0 0 4px #3fb950; }
+  #bar button#btnTalk.thinking { box-shadow: 0 0 0 4px #f0c14a; }
+  #bar button#btnTalk.speaking { box-shadow: 0 0 0 4px #7ec8ff; }
+  #btnSafe { background: var(--safe); border-color: #8eedb0; }
+  #btnTrapped { background: var(--trap); border-color: #ffb4b4; }
+  #bar .seg {
+    display: flex; border: 2px solid #fff; border-radius: 12px; overflow: hidden;
+  }
+  #bar .seg button {
+    flex: 1; min-height: 44px; border: 0; border-radius: 0;
+    background: transparent; font-size: 15px; font-weight: 800;
+  }
+  #bar .seg button + button { box-shadow: inset 2px 0 0 #fff; }
+  #bar .seg button.on { background: var(--go); }
+
+  #mapFull {
+    position: fixed; inset: 0; z-index: 40; background: var(--bg);
+    display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top);
+  }
+  #mapBig { flex: 1; width: 100%; touch-action: none; }
+  .map-ui {
+    display: flex; gap: 12px; align-items: center;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  .map-ui p { flex: 1; margin: 0; font-size: 18px; font-weight: 800; }
+  #btnMapClose {
+    min-height: 52px; min-width: 120px; border-radius: 12px; border: 2px solid #fff;
+    background: #161b22; font-weight: 800;
+  }
+</style>
+</head>
+<body>
+<section id="pick" class="screen">
+  <div class="pad">
+    <p class="eyebrow">FIRESIGHT</p>
+    <h1>Where are you?</h1>
+    <input id="search" type="search" placeholder="Search rooms" autocomplete="off" enterkeyhint="search">
+    <p id="pickMsg" hidden></p>
+  </div>
+  <div id="roomList"></div>
+</section>
+
+<section id="ready" class="screen" hidden>
+  <div class="pad">
+    <p class="eyebrow">FIRESIGHT</p>
+    <p id="readyMeta">Floor</p>
+    <h1 id="readyLabel">Room</h1>
+    <p class="lead">Point your camera down the hall. The arrow shows the way out.</p>
+    <button id="btnStart" class="go" type="button" disabled>Start</button>
+    <button id="btnBack" class="ghost" type="button">Choose another room</button>
+  </div>
+</section>
+
+<section id="live" hidden>
+  <video id="cam" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <div id="top">
+    <div id="banner" aria-live="polite">
+      <div id="hazardLine" hidden></div>
+      <div id="actionLine">Finding a route...</div>
+      <div id="exitLine" hidden></div>
+    </div>
+    <div id="offline" hidden>Offline. Follow exit signs.</div>
+    <div id="where"></div>
+    <p id="agentCaption" hidden></p>
+    <span id="chipCompass" class="chip">Compass off</span>
+    <span id="chipCamera" class="chip" hidden>Camera off</span>
+    <span id="chipUnsure" class="chip" role="status" hidden>Not sure where you are. Point the camera at a door number.</span>
+  </div>
+  <div id="flash" hidden>Route changed</div>
+  <div id="out" hidden>
+    <div class="out-card">
+      <h2>You are out.</h2>
+      <p>Go to the assembly point.</p>
+    </div>
+  </div>
+  <canvas id="minimap" role="button" tabindex="0" aria-label="Floor map. Tap to expand."></canvas>
+  <div id="toast" hidden></div>
+  <div id="bar">
+    <div class="seg" role="group" aria-label="Position source">
+      <button id="btnSensors" type="button" aria-pressed="true">Sensors</button>
+      <button id="btnDemo" type="button" aria-pressed="false">Demo walk</button>
+    </div>
+    <div class="row">
+      <button id="btnWalk" type="button" aria-pressed="false">Walk</button>
+      <button id="btnTalk" type="button" aria-pressed="false" aria-label="Talk to the guide">Talk</button>
+      <button id="btnMute" type="button" aria-pressed="false">Mute</button>
+    </div>
+    <div class="row">
+      <button id="btnStairs" type="button">I took the stairs</button>
+    </div>
+    <div class="row">
+      <button id="btnSafe" class="safe" type="button">I'm safe</button>
+      <button id="btnTrapped" class="trap" type="button">I'm trapped</button>
+    </div>
+  </div>
+</section>
+
+<section id="mapFull" hidden>
+  <canvas id="mapBig" aria-label="Tap the map to set where you are"></canvas>
+  <div class="map-ui">
+    <p>Tap where you are</p>
+    <button id="btnMapClose" type="button">Close</button>
+  </div>
+</section>
+
+<script src="pdr.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const pick = $("pick");
+  const ready = $("ready");
+  const live = $("live");
+  const mapFull = $("mapFull");
+
+  let pos = null;
+  let building = null;
+  let fireState = null;
+  let nav = null;
+  let rooms = [];
+  let roomsLoaded = false;
+  let roomsFlight = null;
+  let buildingFlight = null;
+  let seenRev = null;
+
+  let walking = false;
+  let muted = false;
+  let voiceOn = false;
+  let compassOn = false;
+  let phoneHeading = null;
+  let compassAttached = false;
+  let cameraOn = false;
+  let offline = false;
+  let posMode = "demo";
+  let poseUnsure = false;
+  let lastPose = null;
+  let lastFixKey = "";
+
+  let lastRev = null;
+  let lastSig = null;
+  let lastHazard = undefined;
+  let lastStepKey = null;
+  let saidOut = false;
+
+  let voiceAgent = null;
+  let agentFlight = null;
+  let agentBroken = false;
+
+  let pathSig = "";
+  let seg = 0;
+  let mapArm = 0;
+
+  const queue = [];
+  let draining = false;
+  let clipId = 0;
+  const ttsAudio = new Audio();
+  ttsAudio.setAttribute("playsinline", "");
+
+  function show(which) {
+    pick.hidden = which !== "pick";
+    ready.hidden = which !== "ready";
+    live.hidden = which !== "live";
+  }
+
+  function personId() {
+    const key = "firesight.person";
+    try {
+      let id = localStorage.getItem(key);
+      if (!id) {
+        id = (window.crypto && crypto.randomUUID && crypto.randomUUID())
+          || ("p" + Math.random().toString(36).slice(2, 12));
+        localStorage.setItem(key, id);
+      }
+      return id;
+    } catch (e) {
+      if (!personId._fallback) personId._fallback = "p" + Math.random().toString(36).slice(2, 12);
+      return personId._fallback;
+    }
+  }
+
+  function initPDR() {
+    if (!window.FiresightPDR) return;
+    FiresightPDR.init({
+      session: personId(),
+      apiBase: "",
+      onPose: onPdrPose,
+      onStatus: function () {}
+    });
+  }
+
+  function seenText(pose) {
+    const seen = pose && Array.isArray(pose.seen) ? pose.seen : [];
+    let best = "";
+    let bestScore = -1;
+    for (const item of seen) {
+      if (!item || item.text == null) continue;
+      const text = String(item.text).trim();
+      if (!text) continue;
+      const score = Number(item.score);
+      const rank = Number.isFinite(score) ? score : 0;
+      if (rank >= bestScore) {
+        bestScore = rank;
+        best = text;
+      }
+    }
+    return best;
+  }
+
+  function syncUnsure() {
+    poseUnsure = !!(lastPose && lastPose.unsure === true);
+    $("chipUnsure").hidden = !poseUnsure;
+  }
+
+  function applyPosePosition(pose) {
+    if (posMode !== "sensors" || !pose || !pos) return false;
+    const x = Number(pose.x);
+    const y = Number(pose.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || pose.level == null || pose.level === "") return false;
+    const levelChanged = Number(pos.level) !== Number(pose.level);
+    const moved = levelChanged || Math.hypot(x - pos.x, y - pos.y) > 0.15;
+    pos.level = pose.level;
+    pos.x = x;
+    pos.y = y;
+    if (levelChanged) {
+      pathSig = "";
+      saidOut = false;
+    }
+    if (pose.source === "vision") {
+      const seen = Array.isArray(pose.seen) ? pose.seen : [];
+      const room = seen.find((s) => s && s.room_id && s.room_id !== "EXIT");
+      if (room && room.room_id) pos.room_id = String(room.room_id);
+      const label = seenText(pose);
+      if (label) pos.label = label;
+    }
+    renderWhere();
+    return moved;
+  }
+
+  function onPdrPose(pose) {
+    if (!pose || typeof pose !== "object") return;
+    const wasUnsure = poseUnsure;
+    lastPose = pose;
+    if (pose.source === "vision") {
+      const label = seenText(pose) || (pos && (pos.label || pos.room_id)) || "this room";
+      const text = "Position fixed at " + label;
+      if (text !== lastFixKey || wasUnsure) {
+        lastFixKey = text;
+        flashMsg(text);
+      }
+    }
+    const moved = applyPosePosition(pose);
+    syncUnsure();
+    if (moved) tick();
+  }
+
+  async function usePdrCamera(stream) {
+    if (!window.FiresightPDR) return;
+    const cam = $("cam");
+    const live = stream || cam.srcObject;
+    if (!live || typeof live.getVideoTracks !== "function") return;
+    const ok = await FiresightPDR.enableCamera(cam, 2500, live);
+    if (ok) cameraOn = true;
+  }
+
+  function setPosMode(mode) {
+    posMode = mode === "sensors" ? "sensors" : "demo";
+    const sensors = posMode === "sensors";
+    $("btnSensors").classList.toggle("on", sensors);
+    $("btnDemo").classList.toggle("on", !sensors);
+    $("btnSensors").setAttribute("aria-pressed", sensors ? "true" : "false");
+    $("btnDemo").setAttribute("aria-pressed", sensors ? "false" : "true");
+    if (sensors) setWalking(false);
+    syncUnsure();
+    if (sensors && lastPose && applyPosePosition(lastPose)) tick();
+  }
+
+  function stairDir() {
+    if (!nav || !pos) return null;
+    if (nav.turn === "stairs_up") return "up";
+    if (nav.turn === "stairs_down") return "down";
+    const next = nav.next;
+    if (next && next.level != null && next.level !== "" && Number(next.level) !== Number(pos.level)) {
+      return Number(next.level) > Number(pos.level) ? "up" : "down";
+    }
+    return null;
+  }
+
+  async function onStairsTap() {
+    if (posMode === "sensors" && window.FiresightPDR) {
+      const dir = stairDir();
+      if (!dir) {
+        toast("No stairs ahead.");
+        return;
+      }
+      const before = pos ? pos.level : null;
+      const pose = await FiresightPDR.tookStairs(dir);
+      if (pose && pose.level != null && Number(pose.level) !== Number(before)) {
+        toast("Now on floor " + pose.level);
+      } else if (!pose) {
+        toast("Could not change floors.");
+      }
+      return;
+    }
+    tookStairs();
+  }
+
+  function isNet(e) {
+    return !e || e.name === "TypeError" || e instanceof TypeError;
+  }
+
+  function setOffline(on) {
+    offline = !!on;
+    $("offline").hidden = !offline;
+    const pm = $("pickMsg");
+    if (offline) {
+      pm.hidden = false;
+      pm.textContent = "Offline. Follow exit signs.";
+    } else if (pm.textContent === "Offline. Follow exit signs.") {
+      pm.hidden = true;
+    }
+  }
+
+  async function getJSON(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      const err = new Error("http " + res.status);
+      err.status = res.status;
+      throw err;
+    }
+    return res.json();
+  }
+
+  function loadBuilding() {
+    if (buildingFlight) return buildingFlight;
+    buildingFlight = getJSON("/api/building").then((data) => {
+      building = data;
+      setOffline(false);
+    }).catch((e) => {
+      if (isNet(e)) setOffline(true);
+    }).finally(() => { buildingFlight = null; });
+    return buildingFlight;
+  }
+
+  function loadRooms() {
+    if (roomsFlight) return roomsFlight;
+    roomsFlight = getJSON("/api/qr").then((data) => {
+      rooms = Array.isArray(data) ? data.slice() : [];
+      rooms.sort((a, b) =>
+        (Number(a.level) - Number(b.level))
+        || String(a.label || a.code || "").localeCompare(String(b.label || b.code || ""), undefined, { numeric: true }));
+      roomsLoaded = true;
+      setOffline(false);
+      renderRooms();
+    }).catch((e) => {
+      roomsLoaded = false;
+      if (isNet(e)) setOffline(true);
+      renderRooms();
+    }).finally(() => { roomsFlight = null; });
+    return roomsFlight;
+  }
+
+  function renderRooms() {
+    const box = $("roomList");
+    const q = $("search").value.trim().toLowerCase();
+    box.replaceChildren();
+    if (!roomsLoaded && !rooms.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "Loading rooms...";
+      box.appendChild(p);
+      return;
+    }
+    const list = rooms.filter((r) => {
+      if (!q) return true;
+      return [r.label, r.code, r.room_id, r.level].join(" ").toLowerCase().includes(q);
+    });
+    if (!list.length) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = "No rooms match.";
+      box.appendChild(p);
+      return;
+    }
+    for (const r of list) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "room";
+      btn.dataset.code = r.code;
+      const name = document.createElement("b");
+      name.textContent = r.label || r.code || "Room";
+      const meta = document.createElement("span");
+      meta.textContent = "Floor " + r.level;
+      btn.append(name, meta);
+      btn.addEventListener("click", () => chooseRoom(r.code));
+      box.appendChild(btn);
+    }
+  }
+
+  function setPlace(info) {
+    const x = Number(info.x);
+    const y = Number(info.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || info.level == null || info.level === "") {
+      const err = new Error("bad place");
+      err.status = 404;
+      throw err;
+    }
+    pos = {
+      level: info.level,
+      x: x,
+      y: y,
+      label: info.label || info.code || "",
+      room_id: info.room_id || info.code || null
+    };
+    nav = null;
+    pathSig = "";
+    seg = 0;
+    saidOut = false;
+    lastStepKey = null;
+    lastHazard = undefined;
+    lastSig = null;
+    $("readyLabel").textContent = pos.label || "Room";
+    $("readyMeta").textContent = "Floor " + pos.level;
+    $("btnStart").disabled = false;
+    renderWhere();
+  }
+
+  async function chooseRoom(code) {
+    try {
+      const info = await getJSON("/api/qr/" + encodeURIComponent(code));
+      setPlace(info);
+      setOffline(false);
+      show("ready");
+    } catch (e) {
+      if (isNet(e)) setOffline(true);
+      else {
+        $("pickMsg").hidden = false;
+        $("pickMsg").textContent = "That room is not on the map.";
+      }
+    }
+  }
+
+  function renderWhere() {
+    if (!pos) { $("where").textContent = ""; return; }
+    const bits = ["Floor " + pos.level];
+    if (pos.label) bits.push(pos.label);
+    $("where").textContent = bits.join(" · ");
+  }
+
+  function actionText(n) {
+    const d = Number(n.distance_to_next_m);
+    const near = Number.isFinite(d) && d >= 1;
+    const meters = near ? Math.round(d) : 0;
+    switch (n.turn) {
+      case "left": return near ? ("In " + meters + " m, turn left") : "Turn left";
+      case "right": return near ? ("In " + meters + " m, turn right") : "Turn right";
+      case "straight": return near ? ("In " + meters + " m, continue straight") : "Continue straight";
+      case "stairs_down": return "Take the stairs down";
+      case "stairs_up": return "Take the stairs up";
+      case "arrive": return "Exit ahead";
+      default: return "Head for the exit";
+    }
+  }
+
+  function bannerAction(n) {
+    if (!n) return "Finding a route...";
+    if (n.reachable === false) {
+      if (n.reason === "not on a walkable area") return "Step into a hallway.";
+      return "No safe route.";
+    }
+    return actionText(n);
+  }
+
+  function isOut(n) {
+    if (!n || n.reachable === false || n.next != null) return false;
+    const d = Number(n.distance_m);
+    return Number.isFinite(d) && d < 2;
+  }
+
+  function firstWp(n) {
+    const next = n && n.next;
+    if (next && typeof next === "object") return [next.level, next.x, next.y].join(",");
+    const p = n && n.path && n.path[0];
+    return p ? p.join(",") : "";
+  }
+
+  function speakLineFor(n) {
+    const list = n && Array.isArray(n.instructions) ? n.instructions : [];
+    if (list.length && list[0]) return String(list[0]);
+    return bannerAction(n);
+  }
+
+  function coarseKey(s) {
+    return String(s || "").replace(/\d+(\.\d+)?/g, (num) => String(Math.round(Number(num) / 5) * 5));
+  }
+
+  function hazardText(kind) {
+    if (kind === "fire_near") return "Fire ahead. Turn around.";
+    if (kind === "smoke_on_route") return "Smoke ahead. Stay low.";
+    return "";
+  }
+
+  function bannerPlain(n) {
+    const parts = [];
+    const hz = hazardText(n && n.hazard);
+    if (hz) parts.push(hz);
+    const action = bannerAction(n);
+    if (action) parts.push(action);
+    if (n && n.exit) parts.push(String(n.exit));
+    return parts.join(" ");
+  }
+
+  function renderBanner() {
+    const banner = $("banner");
+    const hazard = $("hazardLine");
+    const action = $("actionLine");
+    const exit = $("exitLine");
+    const line = hazardText(nav && nav.hazard);
+    if (line) {
+      hazard.hidden = false;
+      hazard.textContent = line;
+      banner.classList.add("bad");
+    } else {
+      hazard.hidden = true;
+      hazard.textContent = "";
+      banner.classList.remove("bad");
+    }
+    action.textContent = bannerAction(nav);
+    if (nav && nav.exit) {
+      exit.hidden = false;
+      exit.textContent = String(nav.exit);
+    } else {
+      exit.hidden = true;
+    }
+    const outside = isOut(nav);
+    $("out").hidden = !outside;
+    if (outside && walking) setWalking(false);
+    $("chipCompass").hidden = compassOn;
+  }
+
+  let flashTimer = 0;
+  function flashMsg(text) {
+    if (live.hidden) return;
+    const el = $("flash");
+    el.textContent = text;
+    el.hidden = false;
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => {
+      el.hidden = true;
+      el.classList.remove("show");
+    }, 2200);
+  }
+
+  function flashRoute() {
+    flashMsg("Route changed");
+  }
+
+  function buildingRev(rev) {
+    if (rev == null || rev === "") return "";
+    const s = String(rev);
+    const cut = s.indexOf(":");
+    return cut === -1 ? s : s.slice(0, cut);
+  }
+
+  function applyNav(data) {
+    nav = data;
+    const sig = (data.exit == null ? "" : String(data.exit)) + "|" + firstWp(data);
+    if (lastRev !== null && data.rev !== lastRev && sig !== lastSig) {
+      flashRoute();
+      if (agentLive()) {
+        voiceAgent.say("[system] The route changed: " + bannerPlain(data) + ". Tell the user briefly.");
+      } else {
+        speak("Route changed");
+      }
+    }
+    lastRev = data.rev;
+    lastSig = sig;
+
+    if (voiceOn && data.hazard !== lastHazard) {
+      const said = hazardText(data.hazard);
+      if (said) speak(said);
+    }
+    lastHazard = data.hazard;
+
+    const step = speakLineFor(data);
+    const key = coarseKey(step);
+    if (voiceOn && key && key !== lastStepKey) speak(step);
+    lastStepKey = key;
+
+    const outside = isOut(data);
+    if (voiceOn && outside && !saidOut) speak("You are out.");
+    saidOut = outside;
+
+    const revId = buildingRev(data.rev);
+    if (revId && revId !== seenRev) {
+      if (seenRev != null) loadBuilding();
+      seenRev = revId;
+    }
+    renderBanner();
+    renderWhere();
+  }
+
+  function agentLive() {
+    return !!(voiceAgent && voiceAgent.active);
+  }
+
+  function floorCatalog() {
+    const rooms = [];
+    const verticals = [];
+    if (!building) return { rooms: rooms, verticals: verticals };
+    const fl = floorOf(pos ? pos.level : null);
+    const spaces = (fl && fl.spaces) || [];
+    for (const sp of spaces) {
+      if (!sp || sp.id == null) continue;
+      rooms.push({ id: String(sp.id), label: String(sp.label || sp.id) });
+    }
+    const links = building.vertical_connections || [];
+    for (const v of links) {
+      if (!v || v.id == null) continue;
+      const floors = [];
+      for (const n of (v.floors || [])) {
+        const level = Number(n);
+        if (Number.isFinite(level)) floors.push(level);
+      }
+      verticals.push({
+        id: String(v.id),
+        name: String(v.name || v.id),
+        type: String(v.type || "stairs"),
+        floors: floors
+      });
+    }
+    return { rooms: rooms, verticals: verticals };
+  }
+
+  function agentState() {
+    const pose = lastPose && typeof lastPose === "object" ? lastPose : null;
+    const sensors = posMode === "sensors";
+    let confidence = null;
+    if (sensors && pose && Number.isFinite(Number(pose.confidence))) confidence = Number(pose.confidence);
+    else if (!sensors && pos) confidence = 1;
+    const indexed = floorCatalog();
+    return {
+      session_id: personId(),
+      level: pos ? pos.level : null,
+      x: pos ? pos.x : null,
+      y: pos ? pos.y : null,
+      room_label: pos ? (pos.label || pos.room_id || "") : "",
+      room_id: pos && pos.room_id ? String(pos.room_id) : null,
+      nav: nav,
+      banner: bannerPlain(nav),
+      confidence: confidence,
+      unsure: sensors ? !!(pose && pose.unsure === true) : false,
+      building_name: building && building.building ? String(building.building) : "",
+      floor_rooms: indexed.rooms,
+      verticals: indexed.verticals
+    };
+  }
+
+  function setAgentMode(mode) {
+    const btn = $("btnTalk");
+    const liveMode = mode === "listening" || mode === "thinking" || mode === "speaking";
+    btn.classList.toggle("listening", mode === "listening");
+    btn.classList.toggle("thinking", mode === "thinking");
+    btn.classList.toggle("speaking", mode === "speaking");
+    btn.classList.toggle("on", liveMode);
+    btn.setAttribute("aria-pressed", liveMode ? "true" : "false");
+  }
+
+  function showAgentLine(text) {
+    const el = $("agentCaption");
+    el.hidden = false;
+    el.textContent = text;
+  }
+
+  function onAgentTranscript(message) {
+    if (!message || message.role !== "agent" || !message.text) return;
+    showAgentLine(String(message.text));
+  }
+
+  function agentUnavailable() {
+    setAgentMode("off");
+    showAgentLine("Voice agent unavailable");
+  }
+
+  function mountAgent(factory) {
+    if (voiceAgent) return voiceAgent;
+    voiceAgent = factory({
+      getState: agentState,
+      onStatus: setAgentMode,
+      onTranscript: onAgentTranscript
+    });
+    return voiceAgent;
+  }
+
+  function prepareAgent() {
+    if (voiceAgent || agentBroken) return Promise.resolve(voiceAgent);
+    if (typeof window.__firesightCreateAgent === "function") {
+      try {
+        return Promise.resolve(mountAgent(window.__firesightCreateAgent));
+      } catch (e) {
+        voiceAgent = null;
+        agentBroken = true;
+        return Promise.resolve(null);
+      }
+    }
+    if (agentFlight) return agentFlight;
+    agentFlight = import("./voice-agent.js").then((mod) => {
+      if (!mod || typeof mod.createFiresightAgent !== "function") throw new Error("bad module");
+      window.__firesightCreateAgent = mod.createFiresightAgent;
+      return mountAgent(mod.createFiresightAgent);
+    }).catch(() => {
+      voiceAgent = null;
+      agentBroken = true;
+      return null;
+    }).finally(() => { agentFlight = null; });
+    return agentFlight;
+  }
+
+  function readyAgent() {
+    if (voiceAgent) return voiceAgent;
+    if (typeof window.__firesightCreateAgent !== "function") return null;
+    try {
+      agentBroken = false;
+      return mountAgent(window.__firesightCreateAgent);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Page load, not the Talk tap. iOS needs start() in the tap with no await before it.
+  prepareAgent();
+
+  function onTalk() {
+    const btn = $("btnTalk");
+    if (btn.disabled) return;
+    if (agentLive()) {
+      voiceAgent.stop().catch(() => {});
+      setAgentMode("off");
+      return;
+    }
+    const agent = readyAgent();
+    if (!agent) {
+      if (!agentFlight) {
+        agentBroken = false;
+        prepareAgent();
+      }
+      agentUnavailable();
+      return;
+    }
+    let started;
+    try {
+      started = agent.start();
+    } catch (e) {
+      agentUnavailable();
+      return;
+    }
+    stopSpeak();
+    btn.disabled = true;
+    Promise.resolve(started).catch(() => {
+      if (voiceAgent && voiceAgent.active) voiceAgent.stop().catch(() => {});
+      agentUnavailable();
+    }).finally(() => { btn.disabled = false; });
+  }
+
+  function speak(text) {
+    if (!voiceOn || muted || agentLive() || !text) return;
+    queue.push(String(text));
+    drain();
+  }
+
+  function stopSpeak() {
+    clipId++;
+    queue.length = 0;
+    try { ttsAudio.pause(); } catch (e) {}
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    while (queue.length && !muted) {
+      const text = queue.shift();
+      const result = await playTts(text);
+      if (result === "fallback" && !muted) await playSynth(text);
+    }
+    draining = false;
+    if (queue.length && !muted) drain();
+  }
+
+  async function playTts(text) {
+    const my = ++clipId;
+    let url = "";
+    try {
+      const res = await fetch("/api/voice/tts?style=occupant&text=" + encodeURIComponent(text), { cache: "no-store" });
+      if (my !== clipId || muted) return "stopped";
+      if (!res.ok) return "fallback";
+      const blob = await res.blob();
+      if (my !== clipId || muted) return "stopped";
+      url = URL.createObjectURL(blob);
+      ttsAudio.src = url;
+      await ttsAudio.play();
+      if (my !== clipId || muted) return "stopped";
+      await new Promise((resolve) => {
+        let settled = false;
+        const timer = setInterval(() => {
+          if (my !== clipId || muted || ttsAudio.ended) finish();
+        }, 250);
+        const killer = setTimeout(finish, 20000);
+        function finish() {
+          if (settled) return;
+          settled = true;
+          clearInterval(timer);
+          clearTimeout(killer);
+          resolve();
+        }
+        ttsAudio.addEventListener("ended", finish, { once: true });
+      });
+      if (my !== clipId || muted) return "stopped";
+      return "ok";
+    } catch (e) {
+      if (my !== clipId || muted) return "stopped";
+      return "fallback";
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function playSynth(text) {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      const synth = window.speechSynthesis;
+      if (!synth || muted) { finish(); return; }
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "en-US";
+      u.rate = 1;
+      u.onend = finish;
+      u.onerror = finish;
+      synth.speak(u);
+      setTimeout(finish, 15000);
+    });
+  }
+
+  const SILENT_WAV = "data:audio/wav;base64,UklGRmQBAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
+  function unlockAudio() {
+    try {
+      ttsAudio.src = SILENT_WAV;
+      const played = ttsAudio.play();
+      if (played && typeof played.catch === "function") played.catch(() => {});
+    } catch (e) {}
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) {
+        const u = new SpeechSynthesisUtterance(" ");
+        u.volume = 0;
+        synth.speak(u);
+      }
+    } catch (e) {}
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) {
+        const ctx = new AC();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+        ctx.resume();
+      }
+    } catch (e) {}
+  }
+
+  function setHeading(deg) {
+    phoneHeading = ((Number(deg) % 360) + 360) % 360;
+    compassOn = true;
+    $("chipCompass").hidden = true;
+  }
+
+  function onOrient(e) {
+    if (typeof e.webkitCompassHeading === "number" && !Number.isNaN(e.webkitCompassHeading)) {
+      setHeading(e.webkitCompassHeading);
+      return;
+    }
+    const absolute = e.absolute === true || e.type === "deviceorientationabsolute";
+    if (absolute && typeof e.alpha === "number" && !Number.isNaN(e.alpha)) {
+      setHeading(360 - e.alpha);
+    }
+  }
+
+  function attachCompass() {
+    if (compassAttached) return;
+    compassAttached = true;
+    window.addEventListener("deviceorientationabsolute", onOrient, true);
+    window.addEventListener("deviceorientation", onOrient, true);
+  }
+
+  async function requestCompass() {
+    const DOE = window.DeviceOrientationEvent;
+    try {
+      if (DOE && typeof DOE.requestPermission === "function") {
+        const res = await DOE.requestPermission();
+        if (res !== "granted") return;
+      }
+    } catch (e) {
+      return;
+    }
+    attachCompass();
+  }
+
+  async function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      cameraOn = false;
+      return null;
+    }
+    const tries = [
+      { video: { facingMode: "environment" }, audio: false },
+      { video: true, audio: false }
+    ];
+    for (const constraints of tries) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        $("cam").srcObject = stream;
+        await $("cam").play();
+        cameraOn = true;
+        return stream;
+      } catch (e) {}
+    }
+    cameraOn = false;
+    return null;
+  }
+
+  function arrowRad() {
+    if (!nav) return 0;
+    let deg = 0;
+    if (compassOn && phoneHeading != null && typeof nav.heading_compass_deg === "number") {
+      deg = nav.heading_compass_deg - phoneHeading;
+    } else if (typeof nav.heading_plan_deg === "number") {
+      deg = nav.heading_plan_deg;
+    }
+    return deg * Math.PI / 180;
+  }
+
+  function fitCanvas(canvas) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return null;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = Math.max(1, Math.round(rect.width * dpr));
+    const h = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: rect.width, h: rect.height };
+  }
+
+  function drawChevron(ctx) {
+    ctx.beginPath();
+    ctx.moveTo(0, -16);
+    ctx.lineTo(22, 12);
+    ctx.lineTo(9, 12);
+    ctx.lineTo(0, 1);
+    ctx.lineTo(-9, 12);
+    ctx.lineTo(-22, 12);
+    ctx.closePath();
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.fillStyle = "#f4fbff";
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  function drawOverlay() {
+    const fitted = fitCanvas($("overlay"));
+    if (!fitted) return;
+    const ctx = fitted.ctx;
+    const w = fitted.w;
+    const h = fitted.h;
+    ctx.clearRect(0, 0, w, h);
+    const fade = ctx.createLinearGradient(0, h * 0.58, 0, h);
+    fade.addColorStop(0, "rgba(0,0,0,0)");
+    fade.addColorStop(1, "rgba(0,0,0,0.28)");
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, h * 0.58, w, h * 0.42);
+    if (!nav || nav.reachable === false || isOut(nav)) return;
+    const ang = arrowRad();
+    drawRibbon(ctx, w, h, ang);
+    drawArrow(ctx, w, h, ang);
+  }
+
+  function drawArrow(ctx, w, h, ang) {
+    const cx = w / 2;
+    const cy = Math.max(176, Math.min(h * 0.40, h - 332));
+    ctx.save();
+    if (poseUnsure) ctx.globalAlpha = 0.38;
+    ctx.translate(cx, cy);
+    ctx.rotate(ang);
+    ctx.beginPath();
+    ctx.moveTo(0, -78);
+    ctx.lineTo(36, 8);
+    ctx.lineTo(15, 8);
+    ctx.lineTo(15, 64);
+    ctx.lineTo(-15, 64);
+    ctx.lineTo(-15, 8);
+    ctx.lineTo(-36, 8);
+    ctx.closePath();
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = "rgba(0,0,0,0.8)";
+    ctx.fillStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawRibbon(ctx, w, h, ang) {
+    const depth = Math.min(h * 0.30, 240);
+    const n = 6;
+    ctx.save();
+    ctx.translate(w / 2, h - 270);
+    ctx.rotate(ang);
+    for (let i = n - 1; i >= 0; i--) {
+      const dist = (i + 0.15) / n;
+      const scale = 1.2 - dist * 0.85;
+      ctx.save();
+      ctx.translate(0, -dist * depth);
+      ctx.scale(scale, scale * (0.48 + (1 - dist) * 0.4));
+      ctx.globalAlpha = 0.4 + (1 - dist) * 0.55;
+      drawChevron(ctx);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function floorOf(level) {
+    const floors = (building && building.floors) || [];
+    return floors.find((f) => Number(f.level) === Number(level)) || null;
+  }
+
+  function boundsFor(fl, grid) {
+    const pts = [];
+    if (fl && Array.isArray(fl.outline)) {
+      for (const p of fl.outline) if (p && p.length >= 2) pts.push(p);
+    }
+    if (fl && Array.isArray(fl.walls)) {
+      for (const wall of fl.walls) {
+        if (!wall) continue;
+        pts.push([wall.x1, wall.y1]);
+        pts.push([wall.x2, wall.y2]);
+      }
+    }
+    if (!pts.length && grid) {
+      return {
+        minX: grid.origin_x, minY: grid.origin_y,
+        maxX: grid.origin_x + grid.cols * grid.cell,
+        maxY: grid.origin_y + grid.rows * grid.cell
+      };
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      const x = Number(p[0]);
+      const y = Number(p[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    if (!Number.isFinite(minX)) {
+      return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+    }
+    const pad = Math.max(0.6, (maxX - minX) * 0.04);
+    return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+  }
+
+  function fireCells(level) {
+    const fire = fireState && fireState.fire;
+    if (!fire) return [];
+    return fire[level] || fire[String(level)] || [];
+  }
+
+  function cellRC(cell) {
+    if (Array.isArray(cell)) return [Number(cell[0]), Number(cell[1])];
+    if (cell && typeof cell === "object") {
+      return [Number(cell.r != null ? cell.r : cell.row), Number(cell.c != null ? cell.c : cell.col)];
+    }
+    return [NaN, NaN];
+  }
+
+  function drawMap(canvas) {
+    const fitted = fitCanvas(canvas);
+    if (!fitted || !pos) return;
+    const ctx = fitted.ctx;
+    const w = fitted.w;
+    const h = fitted.h;
+    const fl = floorOf(pos.level);
+    const grid = building && building.grid;
+    const b = boundsFor(fl, grid);
+    const bw = Math.max(0.001, b.maxX - b.minX);
+    const bh = Math.max(0.001, b.maxY - b.minY);
+    const pad = 12;
+    const s = Math.min((w - pad * 2) / bw, (h - pad * 2) / bh);
+    const ox = (w - bw * s) / 2;
+    const oy = (h - bh * s) / 2;
+    const X = (x) => ox + (x - b.minX) * s;
+    const Y = (y) => oy + (y - b.minY) * s;
+    canvas._map = { minX: b.minX, minY: b.minY, s: s, ox: ox, oy: oy, cssW: w, cssH: h };
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0e1116";
+    ctx.fillRect(0, 0, w, h);
+
+    const spaces = (fl && fl.spaces) || [];
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    for (const sp of spaces) {
+      const poly = sp && sp.polygon;
+      if (!poly || poly.length < 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(X(poly[0][0]), Y(poly[0][1]));
+      for (let i = 1; i < poly.length; i++) ctx.lineTo(X(poly[i][0]), Y(poly[i][1]));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    if (fl && fl.outline && fl.outline.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(X(fl.outline[0][0]), Y(fl.outline[0][1]));
+      for (let i = 1; i < fl.outline.length; i++) ctx.lineTo(X(fl.outline[i][0]), Y(fl.outline[i][1]));
+      ctx.closePath();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.beginPath();
+    const walls = (fl && fl.walls) || [];
+    for (const wall of walls) {
+      if (!wall) continue;
+      const x1 = Number(wall.x1), y1 = Number(wall.y1), x2 = Number(wall.x2), y2 = Number(wall.y2);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+      ctx.moveTo(X(x1), Y(y1));
+      ctx.lineTo(X(x2), Y(y2));
+    }
+    ctx.stroke();
+
+    if (grid && Number(grid.cell) > 0) {
+      const cell = Number(grid.cell);
+      ctx.fillStyle = "#ff4d3d";
+      for (const raw of fireCells(pos.level)) {
+        const rc = cellRC(raw);
+        if (!Number.isFinite(rc[0]) || !Number.isFinite(rc[1])) continue;
+        const x = Number(grid.origin_x) + rc[1] * cell;
+        const y = Number(grid.origin_y) + rc[0] * cell;
+        const side = Math.max(2, cell * s);
+        ctx.fillRect(X(x), Y(y), side, side);
+      }
+    }
+
+    const path = (nav && nav.path) || [];
+    ctx.beginPath();
+    ctx.lineWidth = 3;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#7ec8ff";
+    let pen = false;
+    for (const p of path) {
+      if (!p || Number(p[0]) !== Number(pos.level)) { pen = false; continue; }
+      const x = X(p[1]);
+      const y = Y(p[2]);
+      if (!pen) { ctx.moveTo(x, y); pen = true; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(X(pos.x), Y(pos.y), 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#3fb950";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 12px system-ui, sans-serif";
+    ctx.fillText("Floor " + pos.level, 8, 16);
+  }
+
+  function eventToPlan(canvas, ev) {
+    const m = canvas._map;
+    const rect = canvas.getBoundingClientRect();
+    if (!m || rect.width < 2) return null;
+    const px = (ev.clientX - rect.left) * (m.cssW / rect.width);
+    const py = (ev.clientY - rect.top) * (m.cssH / rect.height);
+    return {
+      x: (px - m.ox) / m.s + m.minX,
+      y: (py - m.oy) / m.s + m.minY
+    };
+  }
+
+  function openMap() {
+    mapArm = performance.now() + 450;
+    mapFull.hidden = false;
+    requestAnimationFrame(() => drawMap($("mapBig")));
+  }
+
+  function closeMap() {
+    mapFull.hidden = true;
+  }
+
+  let toastTimer = 0;
+  function toast(msg) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 2500);
+  }
+
+  function placeAt(x, y) {
+    if (!pos || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    pos.x = x;
+    pos.y = y;
+    pos.room_id = null;
+    pos.label = "";
+    pathSig = "";
+    saidOut = false;
+    renderWhere();
+    lastFixKey = "";
+    toast("You are here.");
+    tick();
+    if (window.FiresightPDR) {
+      initPDR();
+      FiresightPDR.startAt({ level: pos.level, x: pos.x, y: pos.y });
+    }
+  }
+
+  function distPointSeg(x, y, a, b) {
+    const dx = b[1] - a[1];
+    const dy = b[2] - a[2];
+    const len2 = dx * dx + dy * dy;
+    let t = len2 < 1e-8 ? 0 : ((x - a[1]) * dx + (y - a[2]) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(x - (a[1] + t * dx), y - (a[2] + t * dy));
+  }
+
+  function syncPath(path) {
+    const sig = (path || []).map((p) => p.join(",")).join("|");
+    if (sig === pathSig) return;
+    pathSig = sig;
+    seg = 0;
+    if (!path || path.length < 2 || !pos) return;
+    let best = 0;
+    let bestD = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i];
+      const b = path[i + 1];
+      if (Number(a[0]) !== Number(pos.level) && Number(b[0]) !== Number(pos.level)) continue;
+      const d = distPointSeg(pos.x, pos.y, a, b);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    seg = best;
+  }
+
+  function moveToward(x, y, budget) {
+    const dx = x - pos.x;
+    const dy = y - pos.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-4) return 0;
+    const step = Math.min(dist, budget);
+    pos.x += (dx / dist) * step;
+    pos.y += (dy / dist) * step;
+    return step;
+  }
+
+  function walk(dt) {
+    const path = nav && nav.path;
+    if (!path || !path.length || !pos) return;
+    syncPath(path);
+    let budget = 1.2 * dt;
+    let guard = 0;
+    while (budget > 0.0001 && guard++ < 24) {
+      if (seg >= path.length - 1) {
+        const last = path[path.length - 1];
+        if (Number(last[0]) !== Number(pos.level)) {
+          pos.level = last[0];
+          pos.x = last[1];
+          pos.y = last[2];
+        } else {
+          budget -= moveToward(last[1], last[2], budget);
+        }
+        break;
+      }
+      const a = path[seg];
+      const b = path[seg + 1];
+      if (Number(a[0]) !== Number(pos.level)) {
+        pos.level = a[0];
+        pos.x = a[1];
+        pos.y = a[2];
+        continue;
+      }
+      if (Number(b[0]) !== Number(pos.level)) {
+        budget -= moveToward(a[1], a[2], budget);
+        if (Math.hypot(pos.x - a[1], pos.y - a[2]) < 0.25) {
+          pos.level = b[0];
+          pos.x = b[1];
+          pos.y = b[2];
+          seg++;
+          continue;
+        }
+        break;
+      }
+      budget -= moveToward(b[1], b[2], budget);
+      if (Math.hypot(pos.x - b[1], pos.y - b[2]) < 0.15) {
+        pos.x = b[1];
+        pos.y = b[2];
+        seg++;
+        continue;
+      }
+      break;
+    }
+  }
+
+  function tookStairs() {
+    const path = (nav && nav.path) || [];
+    if (!pos) return;
+    for (let i = 0; i < path.length; i++) {
+      if (Number(path[i][0]) !== Number(pos.level)) {
+        pos.level = path[i][0];
+        pos.x = path[i][1];
+        pos.y = path[i][2];
+        pathSig = "";
+        saidOut = false;
+        renderWhere();
+        toast("Now on floor " + pos.level);
+        tick();
+        return;
+      }
+    }
+    toast("No stairs ahead.");
+  }
+
+  function setWalking(on) {
+    walking = !!on;
+    const btn = $("btnWalk");
+    btn.classList.toggle("on", walking);
+    btn.textContent = walking ? "Walking" : "Walk";
+    btn.setAttribute("aria-pressed", walking ? "true" : "false");
+  }
+
+  function navUrl() {
+    const q = "level=" + encodeURIComponent(pos.level)
+      + "&x=" + encodeURIComponent(pos.x.toFixed(2))
+      + "&y=" + encodeURIComponent(pos.y.toFixed(2));
+    return "/api/nav?" + q;
+  }
+
+  let tickFlight = null;
+  let tickAgain = false;
+  function tick() {
+    if (!building) loadBuilding();
+    if (!pick.hidden && !roomsLoaded) loadRooms();
+    if (!pos) return Promise.resolve();
+    if (tickFlight) {
+      tickAgain = true;
+      return tickFlight;
+    }
+    tickAgain = false;
+    tickFlight = (async () => {
+      let navOk = false;
+      try {
+        const data = await getJSON(navUrl());
+        navOk = true;
+        setOffline(false);
+        applyNav(data);
+      } catch (e) {
+        if (isNet(e) || e.status === 502 || e.status === 503 || e.status === 504) setOffline(true);
+        else if (!nav) {
+          $("actionLine").textContent = "Finding a route...";
+        }
+      }
+      try {
+        const res = await fetch("/api/state", { cache: "no-store" });
+        if (res.ok) {
+          fireState = await res.json();
+          if (navOk) setOffline(false);
+        }
+      } catch (e) {
+        if (!navOk && isNet(e)) setOffline(true);
+      }
+    })().finally(() => {
+      tickFlight = null;
+      if (tickAgain) tick();
+    });
+    return tickFlight;
+  }
+
+  async function sendStatus(status) {
+    if (!pos) return;
+    try {
+      const res = await fetch("/api/people/" + encodeURIComponent(personId()) + "/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: status,
+          level: pos.level,
+          x: Number(pos.x.toFixed(2)),
+          y: Number(pos.y.toFixed(2)),
+          room_id: pos.room_id || null
+        })
+      });
+      if (!res.ok) {
+        const err = new Error("http");
+        err.status = res.status;
+        throw err;
+      }
+      setOffline(false);
+      toast(status === "safe"
+        ? "You are marked safe."
+        : "You are marked trapped. Help is coming.");
+    } catch (e) {
+      if (isNet(e) || e.status === 502 || e.status === 503 || e.status === 504) {
+        setOffline(true);
+        toast("Offline. Follow exit signs.");
+      } else {
+        toast("Could not send. Try again.");
+      }
+    }
+  }
+
+  $("search").addEventListener("input", renderRooms);
+  $("search").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const first = $("roomList").querySelector("button.room");
+    if (first) first.click();
+  });
+
+  $("btnBack").addEventListener("click", () => {
+    show("pick");
+    $("search").focus();
+  });
+
+  $("btnStart").addEventListener("click", async () => {
+    const btn = $("btnStart");
+    if (btn.disabled || !pos) return;
+    btn.disabled = true;
+    unlockAudio();
+    let permPromise;
+    if (window.FiresightPDR) {
+      initPDR();
+      permPromise = FiresightPDR.requestPermissions();
+    } else {
+      permPromise = requestCompass().then(() => false);
+    }
+    const camPromise = openCamera();
+    const sensorsOk = await permPromise;
+    if (window.FiresightPDR) {
+      attachCompass();
+      setPosMode(sensorsOk ? "sensors" : "demo");
+      await FiresightPDR.startAt({
+        level: pos.level,
+        x: pos.x,
+        y: pos.y,
+        room_id: pos.room_id || undefined
+      });
+      FiresightPDR.start();
+    } else {
+      setPosMode("demo");
+    }
+    const opened = await camPromise;
+    if (window.FiresightPDR) await usePdrCamera(opened);
+    cameraOn = !!$("cam").srcObject;
+    voiceOn = true;
+    show("live");
+    $("chipCamera").hidden = cameraOn;
+    $("chipCompass").hidden = compassOn;
+    renderBanner();
+    if (nav) {
+      const step = speakLineFor(nav);
+      speak(step);
+      const hz = hazardText(nav.hazard);
+      if (hz) speak(hz);
+      if (isOut(nav)) speak("You are out.");
+    }
+    tick();
+  });
+
+  $("btnSensors").addEventListener("click", () => setPosMode("sensors"));
+  $("btnDemo").addEventListener("click", () => setPosMode("demo"));
+  $("btnWalk").addEventListener("click", () => {
+    if (posMode !== "demo") {
+      setPosMode("demo");
+      setWalking(true);
+      return;
+    }
+    setWalking(!walking);
+  });
+  $("btnStairs").addEventListener("click", () => { onStairsTap(); });
+  $("btnMute").addEventListener("click", () => {
+    muted = !muted;
+    const btn = $("btnMute");
+    btn.classList.toggle("on", muted);
+    btn.textContent = muted ? "Muted" : "Mute";
+    btn.setAttribute("aria-pressed", muted ? "true" : "false");
+    if (muted) stopSpeak();
+  });
+  $("btnTalk").addEventListener("click", () => { onTalk(); });
+  $("btnSafe").addEventListener("click", () => sendStatus("safe"));
+  $("btnTrapped").addEventListener("click", () => sendStatus("trapped"));
+
+  $("minimap").addEventListener("pointerup", (e) => {
+    e.preventDefault();
+    openMap();
+  });
+  $("minimap").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openMap(); }
+  });
+  $("btnMapClose").addEventListener("click", closeMap);
+  $("mapBig").addEventListener("pointerup", (e) => {
+    if (performance.now() < mapArm) return;
+    const plan = eventToPlan($("mapBig"), e);
+    if (!plan) return;
+    placeAt(plan.x, plan.y);
+  });
+
+  let lastT = 0;
+  function frame(t) {
+    const dt = lastT ? Math.min(0.1, (t - lastT) / 1000) : 0;
+    lastT = t;
+    if (posMode === "demo" && walking && pos && nav && !live.hidden && !isOut(nav)) {
+      walk(dt);
+      renderWhere();
+    }
+    if (!live.hidden) {
+      drawOverlay();
+      drawMap($("minimap"));
+    }
+    if (!mapFull.hidden) drawMap($("mapBig"));
+    requestAnimationFrame(frame);
+  }
+
+  async function boot() {
+    prepareAgent();
+    loadBuilding();
+    const qr = new URLSearchParams(location.search).get("qr");
+    if (qr) {
+      show("ready");
+      $("readyLabel").textContent = "Finding your room...";
+      $("readyMeta").textContent = "";
+      try {
+        const info = await getJSON("/api/qr/" + encodeURIComponent(qr));
+        setPlace(info);
+        setOffline(false);
+      } catch (e) {
+        show("pick");
+        if (isNet(e)) setOffline(true);
+        else {
+          $("pickMsg").hidden = false;
+          $("pickMsg").textContent = "That code is not a room. Choose where you are.";
+        }
+        loadRooms();
+      }
+    } else {
+      show("pick");
+      loadRooms();
+    }
+    setInterval(tick, 1500);
+    if (pos) tick();
+    requestAnimationFrame(frame);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

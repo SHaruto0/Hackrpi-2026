@@ -1,0 +1,1573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Firesight Commander</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --line: #2a313c;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --fire: #ff4d3d;
+    --smoke: #d9a441;
+    --safe: #3fb950;
+    --route: #58a6ff;
+    --blocked: #6e1414;
+    --victim: #8957e5;
+  }
+  * { box-sizing: border-box; }
+  html { color-scheme: dark; }
+  html, body {
+    margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;
+  }
+  body { display: flex; flex-direction: column; overflow: hidden; }
+  header {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  h1 { font-size: 16px; margin: 0; }
+  h2 { font-size: 13px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  .sub, .k, .model { color: var(--muted); }
+  .sub { font-size: 12px; }
+  .model { font-size: 11px; margin-top: 6px; min-height: 14px; }
+  .links { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: flex-end; }
+  a { color: var(--route); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .badge.off { color: var(--muted); }
+  .badge.hot { background: #da3633; border-color: #da3633; color: #fff; }
+  main {
+    flex: 1; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(230px, 1fr) minmax(240px, 1fr) minmax(270px, 1.12fr);
+    grid-template-rows: minmax(200px, 1.15fr) minmax(150px, 0.7fr) minmax(130px, 0.55fr) minmax(124px, 0.5fr);
+    grid-template-areas:
+      "floors floors floors"
+      "brief people reports"
+      "ask people reports"
+      "controls timeline search";
+    gap: 12px; padding: 12px;
+  }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; min-width: 0; min-height: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #floorsSec { grid-area: floors; }
+  #briefSec { grid-area: brief; }
+  #askSec { grid-area: ask; }
+  #controlsSec { grid-area: controls; }
+  #peopleSec { grid-area: people; }
+  #timeSec { grid-area: timeline; }
+  #reportsSec { grid-area: reports; }
+  #searchSec { grid-area: search; }
+  .victim-alert {
+    position: sticky; top: 0; z-index: 5;
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 8px 14px; background: #da3633; color: #fff; font-weight: 600;
+  }
+  .victim-alert p { flex: 1; min-width: 0; }
+  .victim-alert button { background: #fff; color: #9a1c1c; border-color: #fff; font-weight: 700; flex: 0 0 auto; }
+  .victim-alert[hidden] { display: none !important; }
+  .scroll { overflow: auto; flex: 1; min-height: 0; }
+  #brief, #answer { white-space: pre-wrap; }
+  #floors {
+    flex: 1; min-height: 0; display: flex; gap: 8px;
+    overflow-x: auto; overflow-y: hidden;
+  }
+  .floor {
+    position: relative; flex: 1 1 0; min-width: 200px; height: 100%;
+    background: #0e1116; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  }
+  .floor-name {
+    height: 28px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 8px; font-size: 12px; position: relative; z-index: 1; user-select: none;
+  }
+  .floor canvas {
+    position: absolute; left: 0; right: 0; top: 28px; bottom: 0;
+    width: 100%; height: calc(100% - 28px); cursor: pointer;
+  }
+  .tag-fire { color: var(--fire); }
+  .tag-smoke { color: var(--smoke); }
+  .tag-clear { color: var(--muted); }
+  #legend { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+  #legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .sq { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .sq.searched-swatch { background: transparent; box-shadow: inset 0 0 0 2px var(--safe); }
+  .xmark {
+    width: 12px; height: 12px; display: inline-flex; align-items: center; justify-content: center;
+    background: #d9a441; color: #000; font-size: 10px; font-weight: 800; line-height: 1; border-radius: 2px;
+  }
+  .dia {
+    width: 9px; height: 9px; display: inline-block; background: var(--safe);
+    transform: rotate(45deg); border-radius: 1px;
+  }
+  button, select, input {
+    font: inherit; background: #21262d; color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  }
+  button { cursor: pointer; }
+  button:hover { border-color: #8b949e; }
+  button:disabled { opacity: 0.55; cursor: default; }
+  button.primary { background: #da3633; border-color: #da3633; }
+  button.on { background: #1f6feb; border-color: #1f6feb; }
+  h2 button { margin-left: auto; padding: 3px 8px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row + .row { margin-top: 6px; }
+  select, #q, #radioText { flex: 1; min-width: 0; width: 100%; }
+  #radioMsg { min-height: 18px; margin: 4px 0 6px; }
+  #stepN { width: 64px; }
+  #ctrlMsg { min-height: 18px; margin-top: 6px; }
+  .bad { color: var(--fire); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  tr.trapped td { background: rgba(255, 77, 61, 0.12); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .chip {
+    display: inline-block; background: #21262d; border: 1px solid var(--line);
+    border-radius: 999px; padding: 2px 8px; margin: 4px 4px 0 0; font-size: 11px;
+  }
+  .chip.kind-fire { background: var(--fire); border-color: var(--fire); color: #fff; }
+  .chip.kind-smoke { background: var(--smoke); border-color: var(--smoke); color: #1c1406; }
+  .chip.kind-blocked { background: var(--blocked); border-color: var(--blocked); color: #fff; }
+  .chip.kind-clear, .chip.kind-searched { background: #2ea043; border-color: #2ea043; color: #fff; }
+  .chip.kind-victim { background: var(--victim); border-color: var(--victim); color: #fff; }
+  .rep-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .rep-by { font-weight: 600; }
+  .rep-text { margin-top: 2px; overflow-wrap: anywhere; }
+  .changes { margin: 4px 0 0; padding-left: 16px; color: var(--muted); }
+  .changes li { margin: 1px 0; overflow-wrap: anywhere; }
+  .floor-prog { margin-bottom: 10px; }
+  .bar {
+    height: 8px; margin: 4px 0; background: #21262d; border: 1px solid var(--line);
+    border-radius: 99px; overflow: hidden;
+  }
+  .bar > i { display: block; height: 100%; background: var(--safe); }
+  .todo { color: var(--muted); font-size: 12px; }
+  details { margin-top: 6px; color: var(--muted); font-size: 11px; }
+  #facts { max-height: 72px; overflow: auto; margin-top: 4px; white-space: pre-wrap; }
+  .ev { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .ev-k { font-weight: 600; }
+  .ev-fire { color: var(--fire); }
+  .ev-person { color: var(--route); }
+  .ev-t { color: var(--muted); font-size: 11px; }
+  p { margin: 0; }
+  @media (max-width: 1080px), (max-height: 720px) {
+    body { overflow: auto; height: auto; }
+    main { display: flex; flex-direction: column; height: auto; }
+    #floors { height: 380px; flex: none; }
+    section { min-height: 180px; }
+    #peopleSec, #reportsSec { min-height: 240px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Firesight Commander</h1>
+    <div class="sub" id="bname">Loading building...</div>
+  </div>
+  <div class="links">
+    <span class="k">Sim step <b id="tval">0</b></span>
+    <span id="fireBadge" class="badge off">No fire</span>
+    <a href="/">3D view</a>
+    <a href="/editor.html">Map editor</a>
+  </div>
+</header>
+<div id="victimAlert" class="victim-alert" hidden role="alert">
+  <p id="victimText"></p>
+  <button id="victimAck" type="button">Acknowledge</button>
+</div>
+<main>
+  <section id="floorsSec">
+    <h2>Floors</h2>
+    <div id="floors"></div>
+    <div id="legend">
+      <span><i class="sq" style="background:#ff4d3d"></i>Fire</span>
+      <span><i class="sq" style="background:#d9a441"></i>Smoke</span>
+      <span><i class="sq" style="background:rgba(230,237,243,.25)"></i>Clear room</span>
+      <span><i class="dia"></i>Clear stairs</span>
+      <span><i class="dot" style="background:#ff4d3d"></i>Trapped</span>
+      <span><i class="dot" style="background:#58a6ff"></i>Evacuating</span>
+      <span><i class="dot" style="background:#3fb950"></i>Safe</span>
+      <span><i class="sq searched-swatch"></i>Searched</span>
+      <span><i class="xmark">X</i>Blocked stairs</span>
+      <span>Click a room to select it.</span>
+    </div>
+  </section>
+
+  <section id="briefSec">
+    <h2>Briefing <button id="radio" type="button" aria-pressed="false">Radio</button></h2>
+    <div id="brief" class="scroll">Loading briefing...</div>
+    <div id="model" class="model"></div>
+    <details>
+      <summary>Facts</summary>
+      <div id="facts"></div>
+    </details>
+  </section>
+
+  <section id="askSec">
+    <h2>Ask</h2>
+    <form id="askForm" class="row">
+      <input id="q" type="text" placeholder="Which stairs are safe?" autocomplete="off" spellcheck="false">
+      <button type="submit">Ask</button>
+    </form>
+    <div id="answer" class="scroll" role="status"></div>
+    <div id="askModel" class="model"></div>
+    <div id="sources"></div>
+  </section>
+
+  <section id="controlsSec">
+    <h2>Controls</h2>
+    <div class="row"><select id="roomSel" aria-label="Room to ignite"></select></div>
+    <div class="row">
+      <button class="primary" id="btnFire" type="button">Start fire</button>
+      <label class="k" for="stepN">Steps</label>
+      <input id="stepN" type="number" min="1" max="50" value="1">
+      <button id="btnStep" type="button">Step</button>
+      <button id="btnReset" type="button">Reset</button>
+    </div>
+    <div id="ctrlMsg" class="k" role="status"></div>
+  </section>
+
+  <section id="peopleSec">
+    <h2>People <span id="peopleCount" class="k"></span></h2>
+    <div id="people" class="scroll"></div>
+  </section>
+
+  <section id="timeSec">
+    <h2>Timeline</h2>
+    <div id="timeline" class="scroll">Loading history...</div>
+  </section>
+
+  <section id="reportsSec">
+    <h2>Field reports</h2>
+    <form id="radioForm" class="row">
+      <input id="radioText" type="text" placeholder="Radio report" aria-label="Radio report" autocomplete="off" spellcheck="false">
+      <button type="submit">Send</button>
+    </form>
+    <div id="radioMsg" class="k" role="status"></div>
+    <div id="reports" class="scroll">Loading reports...</div>
+  </section>
+
+  <section id="searchSec">
+    <h2>Search progress</h2>
+    <div id="search" class="scroll">Loading search progress...</div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const KIND_LABEL = {
+    fire_start: "Fire started",
+    fire_step: "Fire stepped",
+    fire_reset: "Fire reset",
+    person_status: "Check-in",
+  };
+  const STATUS_ORDER = { trapped: 0, evacuating: 1, safe: 2 };
+  const SKIP_TYPES = new Set(["stairwell", "elevator", "void"]);
+  const NUM_WORDS = {
+    one: 1, two: 2, three: 3, four: 4, five: 5,
+    six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+  };
+
+  let building = null;
+  let state = { t: 0, rooms: {}, verticals: {}, origins: [] };
+  let people = [];
+  let roomById = {};
+  let selectedId = "";
+  let fireRunning = false;
+  let briefBusy = false;
+  let briefQueued = false;
+  let timelineSig = "";
+  let pollTail = Promise.resolve();
+  let timeTail = Promise.resolve();
+  let reportTail = Promise.resolve();
+  let reports = [];
+  let reportsLive = false;
+  let searchLive = false;
+  let searchedIds = new Set();
+  let unsearchedItems = [];
+  let searchListed = false;
+  const ackedVictims = new Set();
+  let openVictimKeys = [];
+
+  const $ = (id) => document.getElementById(id);
+
+  function detailOf(data, fallback) {
+    const d = data && data.detail;
+    if (typeof d === "string" && d && d[0] !== "<") return d;
+    if (Array.isArray(d)) return d.map((x) => (x && x.msg) || JSON.stringify(x)).join("; ");
+    return fallback;
+  }
+
+  async function readBody(res) {
+    const text = await res.text();
+    if (!text) return {};
+    try { return JSON.parse(text); }
+    catch { return { detail: text.slice(0, 180) }; }
+  }
+
+  async function postJSON(url, body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: body == null ? undefined : JSON.stringify(body),
+    });
+    return { res, data: await readBody(res) };
+  }
+
+  function num(v) {
+    const n = +v;
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function asPoint(p) {
+    if (Array.isArray(p)) return [num(p[0]), num(p[1])];
+    if (p && typeof p === "object") return [num(p.x != null ? p.x : p[0]), num(p.y != null ? p.y : p[1])];
+    return [NaN, NaN];
+  }
+
+  function timeMs(v) {
+    if (v == null || v === "") return NaN;
+    if (typeof v === "number") return v > 1e12 ? v : v * 1000;
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? NaN : t;
+  }
+
+  function ageOf(v) {
+    const ms = timeMs(v);
+    if (!Number.isFinite(ms)) return "unknown";
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 5) return "just now";
+    if (s < 60) return s + "s ago";
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + "m ago";
+    const h = Math.floor(m / 60);
+    if (h < 48) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  }
+
+  function fmtTs(v) {
+    const ms = timeMs(v);
+    if (!Number.isFinite(ms)) return v == null ? "" : String(v);
+    return new Date(ms).toLocaleString([], {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit",
+    });
+  }
+
+  function clock() {
+    return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+  }
+
+  function personColor(status) {
+    if (status === "trapped") return "#ff4d3d";
+    if (status === "safe") return "#3fb950";
+    if (status === "evacuating") return "#58a6ff";
+    return "#c9d1d9";
+  }
+
+  function hazardColor(status) {
+    if (status === "fire") return "#ff4d3d";
+    if (status === "smoke") return "#d9a441";
+    return "#3fb950";
+  }
+
+  function roomFill(status) {
+    if (status === "fire") return "rgba(255,77,61,0.55)";
+    if (status === "smoke") return "rgba(217,164,65,0.45)";
+    return "rgba(230,237,243,0.05)";
+  }
+
+  function roomName(id) {
+    if (id == null || id === "") return "";
+    const s = roomById[id];
+    if (!s) return String(id);
+    return s.label || s.id;
+  }
+
+  function isFireRunning(s) {
+    if (!s || typeof s !== "object") return false;
+    if (Number(s.t) > 0) return true;
+    if (Array.isArray(s.origins) && s.origins.length) return true;
+    for (const v of Object.values(s.rooms || {})) if (v === "fire" || v === "smoke") return true;
+    for (const v of Object.values(s.verticals || {})) if (v === "fire" || v === "smoke") return true;
+    return false;
+  }
+
+  function indexRooms() {
+    roomById = {};
+    for (const fl of building.floors || []) {
+      for (const s of fl.spaces || []) {
+        if (!s || s.id == null) continue;
+        roomById[s.id] = s;
+        s.level = fl.level;
+      }
+    }
+  }
+
+  function fillRooms() {
+    const sel = $("roomSel");
+    const items = Object.values(roomById).sort((a, b) => {
+      const dl = num(a.level) - num(b.level);
+      if (dl) return dl;
+      return String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { numeric: true });
+    });
+    sel.replaceChildren();
+    if (!items.length) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = "No rooms";
+      sel.appendChild(o);
+      selectedId = "";
+      return;
+    }
+    for (const s of items) {
+      const o = document.createElement("option");
+      o.value = s.id;
+      const label = s.label && s.label !== s.id ? s.label : s.id;
+      o.textContent = "Floor " + s.level + ", " + label + (s.type ? " (" + s.type + ")" : "");
+      sel.appendChild(o);
+    }
+    if (!roomById[selectedId]) selectedId = items[0].id;
+    sel.value = selectedId;
+  }
+
+  function whereText(p) {
+    const bits = [];
+    if (p.room_id) bits.push(roomName(p.room_id));
+    if (p.level != null && p.level !== "") bits.push("floor " + p.level);
+    if (!bits.length && p.x != null && p.y != null) {
+      const x = num(p.x), y = num(p.y);
+      if (Number.isFinite(x) && Number.isFinite(y)) bits.push(x.toFixed(1) + ", " + y.toFixed(1));
+    }
+    return bits.join(", ") || "Unknown";
+  }
+
+  function renderPeople() {
+    const wrap = $("people");
+    const rows = people.slice().sort((a, b) => {
+      const d = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+      if (d) return d;
+      return (timeMs(b.updated_at) || 0) - (timeMs(a.updated_at) || 0);
+    });
+    const tally = { trapped: 0, evacuating: 0, safe: 0 };
+    for (const p of rows) if (tally[p.status] != null) tally[p.status] += 1;
+    const bits = [];
+    if (tally.trapped) bits.push(tally.trapped + " trapped");
+    if (tally.evacuating) bits.push(tally.evacuating + " evacuating");
+    if (tally.safe) bits.push(tally.safe + " safe");
+    $("peopleCount").textContent = bits.join(", ");
+    wrap.replaceChildren();
+    if (!rows.length) {
+      const empty = document.createElement("p");
+      empty.className = "k";
+      empty.textContent = "No check-ins yet.";
+      wrap.appendChild(empty);
+      return;
+    }
+    const table = document.createElement("table");
+    const thead = document.createElement("thead");
+    const hr = document.createElement("tr");
+    for (const h of ["Status", "Person", "Where", "Updated"]) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = h;
+      hr.appendChild(th);
+    }
+    thead.appendChild(hr);
+    const tb = document.createElement("tbody");
+    for (const person of rows) {
+      const tr = document.createElement("tr");
+      if (person.status === "trapped") tr.className = "trapped";
+      const status = document.createElement("td");
+      const dot = document.createElement("i");
+      dot.className = "dot";
+      dot.style.background = personColor(person.status);
+      const name = document.createElement("span");
+      name.textContent = person.status || "unknown";
+      name.style.color = personColor(person.status);
+      status.append(dot, name);
+      const who = document.createElement("td");
+      who.textContent = person.person_id || "Unknown";
+      const where = document.createElement("td");
+      where.textContent = whereText(person);
+      if (person.x != null && person.y != null) {
+        const x = num(person.x), y = num(person.y);
+        if (Number.isFinite(x) && Number.isFinite(y)) where.title = x.toFixed(1) + ", " + y.toFixed(1);
+      }
+      const when = document.createElement("td");
+      when.textContent = ageOf(person.updated_at);
+      tr.append(status, who, where, when);
+      tb.appendChild(tr);
+    }
+    table.append(thead, tb);
+    wrap.appendChild(table);
+  }
+
+  function kindLabel(kind) {
+    if (!kind) return "Event";
+    if (KIND_LABEL[kind]) return KIND_LABEL[kind];
+    return String(kind).replaceAll("_", " ");
+  }
+
+  function eventBits(ev) {
+    const parts = [];
+    if (ev.person_id) parts.push(String(ev.person_id));
+    if (ev.status) parts.push(String(ev.status));
+    if (ev.room_id) parts.push(roomName(ev.room_id));
+    if (ev.level != null && ev.level !== "") parts.push("floor " + ev.level);
+    if (ev.n != null && ev.n !== "") parts.push(ev.n + " steps");
+    if (ev.name) parts.push(String(ev.name));
+    return parts.join(", ");
+  }
+
+  function showTimelineMessage(msg) {
+    const sig = "msg:" + msg;
+    const box = $("timeline");
+    if (timelineSig === sig) return;
+    timelineSig = sig;
+    box.replaceChildren();
+    box.textContent = msg;
+  }
+
+  function renderTimeline(events) {
+    const sig = events.map((e) => [e && e.ts, e && e.kind, e && e.person_id, e && e.room_id, e && e.status, e && e.n].join(":")).join("|");
+    if (sig === timelineSig) return;
+    timelineSig = sig;
+    const box = $("timeline");
+    const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+    box.replaceChildren();
+    if (!events.length) {
+      box.textContent = "No events yet.";
+      return;
+    }
+    for (const ev of events) {
+      if (!ev || typeof ev !== "object") continue;
+      const row = document.createElement("div");
+      row.className = "ev";
+      const k = document.createElement("div");
+      const kind = String(ev.kind || "");
+      k.className = "ev-k " + (kind.startsWith("fire_") ? "ev-fire" : kind === "person_status" ? "ev-person" : "");
+      k.textContent = kindLabel(kind);
+      const t = document.createElement("div");
+      t.className = "ev-t";
+      t.textContent = fmtTs(ev.ts);
+      row.append(k, t);
+      const bits = eventBits(ev);
+      if (bits) {
+        const d = document.createElement("div");
+        d.textContent = bits;
+        row.appendChild(d);
+      }
+      box.appendChild(row);
+    }
+    if (stick) box.scrollTop = box.scrollHeight;
+  }
+
+  function factText(v) {
+    if (v == null || v === "") return "none";
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+    if (Array.isArray(v)) {
+      if (!v.length) return "none";
+      return v.map((item) => {
+        if (item == null) return "none";
+        if (typeof item !== "object") return String(item);
+        return item.label || item.id || item.name || JSON.stringify(item);
+      }).join(", ");
+    }
+    return JSON.stringify(v);
+  }
+
+  function renderFacts(facts) {
+    const box = $("facts");
+    box.replaceChildren();
+    if (facts == null || facts === "") {
+      box.textContent = "None yet.";
+      return;
+    }
+    if (typeof facts === "string") {
+      box.textContent = facts;
+      return;
+    }
+    if (Array.isArray(facts)) {
+      for (const item of facts) {
+        const line = document.createElement("div");
+        line.textContent = factText(item);
+        box.appendChild(line);
+      }
+      return;
+    }
+    if (typeof facts === "object") {
+      for (const [k, v] of Object.entries(facts)) {
+        const line = document.createElement("div");
+        line.textContent = k + ": " + factText(v);
+        box.appendChild(line);
+      }
+      return;
+    }
+    box.textContent = String(facts);
+  }
+
+  function renderSources(ids) {
+    const box = $("sources");
+    box.replaceChildren();
+    if (!Array.isArray(ids)) return;
+    for (const id of ids) {
+      const chip = document.createElement("span");
+      chip.className = "chip";
+      chip.textContent = roomName(id) || String(id);
+      if (String(id) !== chip.textContent) chip.title = String(id);
+      box.appendChild(chip);
+    }
+  }
+
+  async function loadBriefOnce() {
+    const style = $("radio").classList.contains("on") ? "radio" : "commander";
+    const res = await fetch("/api/brief?style=" + encodeURIComponent(style), { cache: "no-store" });
+    const data = await readBody(res);
+    if (!res.ok) {
+      $("brief").textContent = detailOf(data, "Briefing unavailable.");
+      $("model").textContent = "";
+      renderFacts(null);
+      return;
+    }
+    $("brief").textContent = data.text || "";
+    $("model").textContent = (data.model ? "Model: " + data.model + "  " : "") + "Updated " + clock();
+    renderFacts(data.facts);
+  }
+
+  async function loadBrief() {
+    if (briefBusy) { briefQueued = true; return; }
+    briefBusy = true;
+    try {
+      do {
+        briefQueued = false;
+        try { await loadBriefOnce(); }
+        catch { $("brief").textContent = "Briefing unavailable."; }
+      } while (briefQueued);
+    } finally {
+      briefBusy = false;
+    }
+  }
+
+  function worldBounds() {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const add = (x, y) => {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      minX = Math.min(minX, x); minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+    };
+    for (const fl of building.floors || []) {
+      for (const p of fl.outline || []) { const q = asPoint(p); add(q[0], q[1]); }
+      for (const w of fl.walls || []) { add(num(w.x1), num(w.y1)); add(num(w.x2), num(w.y2)); }
+      for (const s of fl.spaces || []) for (const p of s.polygon || []) { const q = asPoint(p); add(q[0], q[1]); }
+    }
+    for (const v of building.vertical_connections || []) {
+      add(num(v.x), num(v.y));
+      for (const pt of Object.values(v.positions || {})) { const q = asPoint(pt); add(q[0], q[1]); }
+    }
+    if (!Number.isFinite(minX)) return { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+    if (maxX - minX < 1) maxX = minX + 1;
+    if (maxY - minY < 1) maxY = minY + 1;
+    return { minX, minY, maxX, maxY };
+  }
+
+  function viewOf(w, h, b) {
+    const pad = 12;
+    const worldW = Math.max(b.maxX - b.minX, 1e-6);
+    const worldH = Math.max(b.maxY - b.minY, 1e-6);
+    const scale = Math.min(Math.max(w - pad * 2, 1) / worldW, Math.max(h - pad * 2, 1) / worldH);
+    const ox = (w - worldW * scale) / 2;
+    const oy = (h - worldH * scale) / 2;
+    return {
+      scale,
+      X(x) { return ox + (x - b.minX) * scale; },
+      Y(y) { return oy + (y - b.minY) * scale; },
+      inv(px, py) { return [(px - ox) / scale + b.minX, (py - oy) / scale + b.minY]; },
+    };
+  }
+
+  function trace(ctx, pts) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+    ctx.closePath();
+  }
+
+  function centroid(poly) {
+    let x = 0, y = 0, n = 0;
+    for (const p of poly) {
+      const q = asPoint(p);
+      if (!Number.isFinite(q[0]) || !Number.isFinite(q[1])) continue;
+      x += q[0]; y += q[1]; n += 1;
+    }
+    return n ? [x / n, y / n] : null;
+  }
+
+  function polyArea(poly) {
+    let a = 0;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const A = asPoint(poly[j]), B = asPoint(poly[i]);
+      if (!Number.isFinite(A[0]) || !Number.isFinite(B[0])) continue;
+      a += A[0] * B[1] - B[0] * A[1];
+    }
+    return Math.abs(a) / 2;
+  }
+
+  function pointInPoly(x, y, poly) {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const A = asPoint(poly[i]), B = asPoint(poly[j]);
+      if (!Number.isFinite(A[0]) || !Number.isFinite(B[0])) continue;
+      const hit = ((A[1] > y) !== (B[1] > y)) &&
+        (x < ((B[0] - A[0]) * (y - A[1])) / (B[1] - A[1]) + A[0]);
+      if (hit) inside = !inside;
+    }
+    return inside;
+  }
+
+  function paintPill(ctx, text, x, y, w, h) {
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    const tw = ctx.measureText(text).width;
+    const padX = 4;
+    const boxW = tw + padX * 2;
+    const boxH = 15;
+    let left = x - boxW / 2;
+    let top = y - boxH / 2;
+    if (left < 2) left = 2;
+    if (left + boxW > w - 2) left = Math.max(2, w - 2 - boxW);
+    if (top < 2) top = 2;
+    if (top + boxH > h - 2) top = Math.max(2, h - 2 - boxH);
+    ctx.fillStyle = "rgba(14,17,22,0.88)";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(left, top, boxW, boxH, 4);
+    else ctx.rect(left, top, boxW, boxH);
+    ctx.fill();
+    ctx.fillStyle = "#e6edf3";
+    ctx.fillText(text, left + padX, top + boxH / 2);
+  }
+
+  function serves(v, level) {
+    return (v.floors || []).some((f) => Number(f) === Number(level));
+  }
+
+  function verticalPoint(v, level) {
+    const pos = v.positions || {};
+    const pt = pos[level] != null ? pos[level] : pos[String(level)];
+    if (pt != null) {
+      const q = asPoint(pt);
+      if (Number.isFinite(q[0]) && Number.isFinite(q[1])) return q;
+    }
+    return [num(v.x), num(v.y)];
+  }
+
+  function floorByLevel(level) {
+    return (building.floors || []).find((f) => Number(f.level) === Number(level));
+  }
+
+  function floorTag(level) {
+    let smoke = false;
+    const fl = floorByLevel(level);
+    const rooms = state.rooms || {};
+    const verts = state.verticals || {};
+    if (fl) {
+      for (const s of fl.spaces || []) {
+        const st = rooms[s.id];
+        if (st === "fire") return "fire";
+        if (st === "smoke") smoke = true;
+      }
+    }
+    for (const v of building.vertical_connections || []) {
+      if (!serves(v, level)) continue;
+      const st = verts[v.id];
+      if (st === "fire") return "fire";
+      if (st === "smoke") smoke = true;
+    }
+    return smoke ? "smoke" : "clear";
+  }
+
+  function buildFloorCards() {
+    const wrap = $("floors");
+    wrap.replaceChildren();
+    const floors = (building.floors || []).slice().sort((a, b) => num(a.level) - num(b.level));
+    for (const fl of floors) {
+      const card = document.createElement("div");
+      card.className = "floor";
+      card.dataset.level = String(fl.level);
+      const name = document.createElement("div");
+      name.className = "floor-name";
+      const title = document.createElement("span");
+      title.textContent = "Floor " + fl.level;
+      const tag = document.createElement("span");
+      tag.className = "floor-tag";
+      name.append(title, tag);
+      const canvas = document.createElement("canvas");
+      canvas.addEventListener("click", onFloorClick);
+      card.append(name, canvas);
+      wrap.appendChild(card);
+    }
+    if (!floors.length) {
+      const empty = document.createElement("p");
+      empty.className = "k";
+      empty.textContent = "No floors in this building.";
+      wrap.appendChild(empty);
+    }
+  }
+
+  function drawFloors() {
+    if (!building) return;
+    const b = worldBounds();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const card of document.querySelectorAll(".floor")) {
+      const level = card.dataset.level;
+      const tag = card.querySelector(".floor-tag");
+      const st = floorTag(level);
+      if (tag) {
+        tag.textContent = st;
+        tag.className = "floor-tag tag-" + st;
+      }
+      const canvas = card.querySelector("canvas");
+      if (!canvas) continue;
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w < 2 || h < 2) continue;
+      const bw = Math.round(w * dpr);
+      const bh = Math.round(h * dpr);
+      if (canvas.width !== bw || canvas.height !== bh) {
+        canvas.width = bw;
+        canvas.height = bh;
+      }
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paintFloor(ctx, w, h, b, floorByLevel(level));
+    }
+  }
+
+  function paintFloor(ctx, w, h, b, fl) {
+    const view = viewOf(w, h, b);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#0e1116";
+    ctx.fillRect(0, 0, w, h);
+    if (!fl) return;
+    const outline = (fl.outline || []).map(asPoint).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+    if (outline.length >= 3) {
+      trace(ctx, outline.map((p) => [view.X(p[0]), view.Y(p[1])]));
+      ctx.fillStyle = "#161b22";
+      ctx.fill();
+      ctx.strokeStyle = "#8b949e";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    const rooms = state.rooms || {};
+    const blocked = blockedVerticalSet();
+    const labeled = [];
+    for (const s of fl.spaces || []) {
+      const poly = s.polygon || [];
+      const pts = poly.map(asPoint).filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+      if (pts.length < 3) continue;
+      trace(ctx, pts.map((p) => [view.X(p[0]), view.Y(p[1])]));
+      const rst = rooms[s.id] || "clear";
+      ctx.fillStyle = roomFill(rst);
+      ctx.fill();
+      if (searchedIds.has(String(s.id))) {
+        ctx.strokeStyle = "#3fb950";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      if (s.id === selectedId) {
+        ctx.strokeStyle = "#58a6ff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      if (rst === "fire" || rst === "smoke" || s.id === selectedId) labeled.push(s);
+    }
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(201,209,217,0.92)";
+    ctx.lineWidth = 1;
+    for (const wall of fl.walls || []) {
+      const x1 = num(wall.x1), y1 = num(wall.y1), x2 = num(wall.x2), y2 = num(wall.y2);
+      if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+      ctx.moveTo(view.X(x1), view.Y(y1));
+      ctx.lineTo(view.X(x2), view.Y(y2));
+    }
+    ctx.stroke();
+    for (const s of labeled) {
+      const c = centroid(s.polygon || []);
+      if (!c) continue;
+      paintPill(ctx, (s.label || s.id) + "", view.X(c[0]), view.Y(c[1]), w, h);
+    }
+    const verts = state.verticals || {};
+    for (const v of building.vertical_connections || []) {
+      if (!serves(v, fl.level)) continue;
+      const [x, y] = verticalPoint(v, fl.level);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const px = view.X(x), py = view.Y(y);
+      const vst = verts[v.id] || "clear";
+      const stairBlocked = blocked.has(String(v.id));
+      ctx.beginPath();
+      ctx.moveTo(px, py - 6);
+      ctx.lineTo(px + 6, py);
+      ctx.lineTo(px, py + 6);
+      ctx.lineTo(px - 6, py);
+      ctx.closePath();
+      ctx.fillStyle = hazardColor(vst);
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#0e1116";
+      ctx.stroke();
+      if (stairBlocked) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.moveTo(px - 7, py - 7);
+        ctx.lineTo(px + 7, py + 7);
+        ctx.moveTo(px + 7, py - 7);
+        ctx.lineTo(px - 7, py + 7);
+        ctx.stroke();
+        ctx.lineCap = "butt";
+      }
+      const bits = [];
+      if (vst !== "clear") bits.push(vst);
+      if (stairBlocked) bits.push("blocked");
+      const text = bits.length ? (v.name || v.id) + ", " + bits.join(", ") : (v.name || v.id);
+      paintPill(ctx, text, px, py - 16, w, h);
+    }
+    for (const p of people) {
+      if (Number(p.level) !== Number(fl.level)) continue;
+      const x = num(p.x), y = num(p.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const px = view.X(x), py = view.Y(y);
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fillStyle = personColor(p.status);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    }
+  }
+
+  function onFloorClick(ev) {
+    if (!building) return;
+    const canvas = ev.currentTarget;
+    const card = canvas.parentElement;
+    const fl = floorByLevel(card.dataset.level);
+    if (!fl) return;
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const px = (ev.clientX - rect.left) * (canvas.clientWidth / rect.width);
+    const py = (ev.clientY - rect.top) * (canvas.clientHeight / rect.height);
+    const view = viewOf(canvas.clientWidth, canvas.clientHeight, worldBounds());
+    const [x, y] = view.inv(px, py);
+    let best = null;
+    let bestArea = Infinity;
+    for (const s of fl.spaces || []) {
+      const poly = s.polygon || [];
+      if (poly.length < 3 || !pointInPoly(x, y, poly)) continue;
+      const area = polyArea(poly);
+      if (area < bestArea) { best = s; bestArea = area; }
+    }
+    if (!best) return;
+    selectedId = best.id;
+    const sel = $("roomSel");
+    if ([...sel.options].some((o) => o.value === best.id)) sel.value = best.id;
+    setCtrl("Selected " + roomName(best.id) + ", floor " + fl.level + ".");
+    drawFloors();
+  }
+
+  function applyChrome() {
+    fireRunning = isFireRunning(state);
+    $("tval").textContent = String(state.t ?? 0);
+    const badge = $("fireBadge");
+    badge.textContent = fireRunning ? "Fire running" : "No fire";
+    badge.className = fireRunning ? "badge hot" : "badge off";
+  }
+
+  async function pollLiveOnce() {
+    const [stRes, peRes] = await Promise.all([
+      fetch("/api/state", { cache: "no-store" }),
+      fetch("/api/people", { cache: "no-store" }),
+    ]);
+    let dirty = false;
+    if (stRes.ok) {
+      const data = await readBody(stRes);
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        state = data;
+        applyChrome();
+        dirty = true;
+      }
+    }
+    if (peRes.ok) {
+      const data = await readBody(peRes);
+      if (Array.isArray(data)) {
+        people = data;
+        renderPeople();
+        dirty = true;
+      }
+    }
+    if (dirty) drawFloors();
+  }
+
+  function pollLive() {
+    const job = pollTail.then(pollLiveOnce, pollLiveOnce);
+    pollTail = job.then(() => {}, () => {});
+    return job;
+  }
+
+  async function pollTimelineOnce() {
+    const res = await fetch("/api/history/timeline", { cache: "no-store" });
+    if (res.status === 503) {
+      showTimelineMessage("History needs MongoDB");
+      return;
+    }
+    if (!res.ok) {
+      showTimelineMessage("History unavailable.");
+      return;
+    }
+    const data = await readBody(res);
+    renderTimeline(Array.isArray(data) ? data : []);
+  }
+
+  function pollTimeline() {
+    const job = timeTail.then(pollTimelineOnce, pollTimelineOnce);
+    timeTail = job.then(() => {}, () => {});
+    return job;
+  }
+
+  function setCtrl(msg, isError) {
+    const el = $("ctrlMsg");
+    el.textContent = msg || "";
+    el.className = isError ? "bad" : "k";
+  }
+
+  function stepCount() {
+    const input = $("stepN");
+    let n = parseInt(input.value, 10);
+    if (!Number.isFinite(n)) n = 1;
+    n = Math.max(1, Math.min(50, n));
+    input.value = String(n);
+    return n;
+  }
+
+  async function runCtrl(fn) {
+    if (!building) { setCtrl("Building is not loaded.", true); return; }
+    const buttons = ["btnFire", "btnStep", "btnReset"].map($);
+    buttons.forEach((b) => { b.disabled = true; });
+    try { await fn(); }
+    catch (err) { setCtrl(err.message || "Control failed.", true); }
+    finally { buttons.forEach((b) => { b.disabled = false; }); }
+  }
+
+  $("radio").addEventListener("click", () => {
+    const btn = $("radio");
+    const on = btn.classList.toggle("on");
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    loadBrief();
+  });
+
+  $("roomSel").addEventListener("change", () => {
+    selectedId = $("roomSel").value;
+    drawFloors();
+  });
+
+  $("btnFire").addEventListener("click", () => runCtrl(async () => {
+    const id = $("roomSel").value;
+    if (!id) { setCtrl("Pick a room.", true); return; }
+    const { res, data } = await postJSON("/api/fire/start", { room_id: id });
+    if (!res.ok) throw new Error(detailOf(data, "Could not start the fire."));
+    setCtrl("Fire started in " + roomName(id) + ".");
+    await pollLive();
+    await loadBrief();
+  }));
+
+  $("btnStep").addEventListener("click", () => runCtrl(async () => {
+    const n = stepCount();
+    const { res, data } = await postJSON("/api/fire/step", { n });
+    if (!res.ok) throw new Error(detailOf(data, "Could not step the fire."));
+    setCtrl("Stepped " + n + ". Sim step " + (data.t ?? "") + ".");
+    await pollLive();
+    await loadBrief();
+  }));
+
+  $("btnReset").addEventListener("click", () => runCtrl(async () => {
+    const res = await fetch("/api/fire/reset", { method: "POST", cache: "no-store" });
+    const data = await readBody(res);
+    if (!res.ok) throw new Error(detailOf(data, "Could not reset the fire."));
+    setCtrl("Fire reset.");
+    await pollLive();
+    await pollReports();
+    await loadBrief();
+  }));
+
+  $("askForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const q = $("q").value.trim();
+    if (!q) return;
+    const btn = ev.currentTarget.querySelector("button");
+    btn.disabled = true;
+    $("answer").textContent = "Asking...";
+    $("askModel").textContent = "";
+    $("sources").replaceChildren();
+    try {
+      const { res, data } = await postJSON("/api/ask", { question: q });
+      if (res.status === 503) {
+        $("answer").textContent = "Q&A needs Snowflake";
+        return;
+      }
+      if (!res.ok) {
+        $("answer").textContent = detailOf(data, "Q&A unavailable.");
+        return;
+      }
+      $("answer").textContent = data.answer || "";
+      $("askModel").textContent = data.model ? "Model: " + data.model : "";
+      renderSources(data.sources);
+    } catch {
+      $("answer").textContent = "Q&A unavailable.";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  function reportKey(rep) {
+    if (rep.id != null && rep.id !== "") return String(rep.id);
+    return [rep.t, rep.by, rep.text].join("|");
+  }
+
+  function asReportList(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.reports)) return data.reports;
+    return [];
+  }
+
+  function victimCount(u) {
+    if (!u || u.count == null || u.count === "") return 1;
+    const n = Math.round(num(u.count));
+    if (Number.isFinite(n) && n >= 1) return n;
+    return NUM_WORDS[String(u.count).trim().toLowerCase()] || 1;
+  }
+
+  function victimPlace(u) {
+    if (u.target_label) return String(u.target_label);
+    if (u.target_id != null && u.target_id !== "") return roomName(u.target_id);
+    return "";
+  }
+
+  function victimSentence(count, place) {
+    const word = count === 1 ? "victim" : "victims";
+    if (!place) return count + " " + word + " reported";
+    return count + " " + word + " reported in " + place;
+  }
+
+  function updateChipText(u, kind) {
+    const target = u.target_label || (u.target_id != null && u.target_id !== "" ? roomName(u.target_id) : "");
+    const bits = [];
+    if (kind === "victim") {
+      const n = victimCount(u);
+      bits.push(n === 1 ? "1 victim" : n + " victims");
+    } else {
+      bits.push(kind);
+      if (u.severity) bits.push(String(u.severity));
+    }
+    if (target) bits.push(String(target));
+    return bits.join(" ");
+  }
+
+  function changeText(c) {
+    if (c == null) return "";
+    if (typeof c === "string" || typeof c === "number") return String(c);
+    if (typeof c === "object") {
+      if (c.text) return String(c.text);
+      if (c.change) return String(c.change);
+      if (c.detail) return String(c.detail);
+      return JSON.stringify(c);
+    }
+    return String(c);
+  }
+
+  function chipKind(u) {
+    return String((u && u.kind) || "note").toLowerCase().replace(/[^a-z]/g, "") || "note";
+  }
+
+  function renderReports() {
+    const box = $("reports");
+    const prev = box.scrollTop;
+    const nearTop = prev < 28;
+    box.replaceChildren();
+    if (!reportsLive) {
+      box.textContent = "Reports unavailable";
+      return;
+    }
+    if (!reports.length) {
+      const empty = document.createElement("p");
+      empty.className = "k";
+      empty.textContent = "No reports yet.";
+      box.appendChild(empty);
+      return;
+    }
+    for (const rep of reports) {
+      if (!rep || typeof rep !== "object") continue;
+      const row = document.createElement("div");
+      row.className = "ev";
+      const top = document.createElement("div");
+      top.className = "rep-top";
+      const by = document.createElement("span");
+      by.className = "rep-by";
+      by.textContent = rep.by ? String(rep.by) : "Unknown";
+      const when = document.createElement("span");
+      when.className = "ev-t";
+      when.textContent = ageOf(rep.t);
+      top.append(by, when);
+      row.appendChild(top);
+      if (rep.text) {
+        const tx = document.createElement("div");
+        tx.className = "rep-text";
+        tx.textContent = String(rep.text);
+        row.appendChild(tx);
+      }
+      const updates = Array.isArray(rep.updates) ? rep.updates : [];
+      if (updates.length) {
+        const chips = document.createElement("div");
+        for (const u of updates) {
+          if (!u || typeof u !== "object") continue;
+          const kind = chipKind(u);
+          const chip = document.createElement("span");
+          chip.className = "chip kind-" + kind;
+          chip.textContent = updateChipText(u, kind);
+          chips.appendChild(chip);
+        }
+        if (chips.childNodes.length) row.appendChild(chips);
+      }
+      const changes = Array.isArray(rep.changes) ? rep.changes : [];
+      if (changes.length) {
+        const ul = document.createElement("ul");
+        ul.className = "changes";
+        for (const c of changes) {
+          const li = document.createElement("li");
+          li.textContent = changeText(c);
+          ul.appendChild(li);
+        }
+        row.appendChild(ul);
+      }
+      box.appendChild(row);
+    }
+    box.scrollTop = nearTop ? 0 : prev;
+  }
+
+  function renderVictimAlert() {
+    const groups = new Map();
+    openVictimKeys = [];
+    for (const rep of reports) {
+      const updates = Array.isArray(rep.updates) ? rep.updates : [];
+      updates.forEach((u, i) => {
+        if (!u || chipKind(u) !== "victim") return;
+        const key = reportKey(rep) + "#" + i;
+        if (ackedVictims.has(key)) return;
+        openVictimKeys.push(key);
+        const place = victimPlace(u);
+        groups.set(place, (groups.get(place) || 0) + victimCount(u));
+      });
+    }
+    const banner = $("victimAlert");
+    if (!openVictimKeys.length) {
+      banner.hidden = true;
+      $("victimText").textContent = "";
+      return;
+    }
+    const places = [...groups.keys()].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    $("victimText").textContent = places.map((place) => victimSentence(groups.get(place), place)).join(". ");
+    banner.hidden = false;
+  }
+
+  function itemId(item) {
+    if (item == null) return "";
+    if (typeof item !== "object") return String(item);
+    if (item.id != null) return String(item.id);
+    if (item.room_id != null) return String(item.room_id);
+    return "";
+  }
+
+  function itemLevel(item) {
+    if (item && typeof item === "object" && item.level != null && item.level !== "") return item.level;
+    const id = itemId(item);
+    const space = id && (roomById[id] || roomById[item && item.id]);
+    return space ? space.level : null;
+  }
+
+  function itemLabel(item) {
+    if (item == null) return "";
+    if (typeof item !== "object") return roomName(item);
+    if (item.label) return String(item.label);
+    const id = itemId(item);
+    return id ? roomName(id) : "";
+  }
+
+  function roomsOnFloor(fl) {
+    return (fl.spaces || []).filter((s) => s && s.id != null && !SKIP_TYPES.has(s.type));
+  }
+
+  function applySearch(data) {
+    searchedIds = new Set();
+    unsearchedItems = [];
+    searchListed = false;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
+    const bag = data.searched && typeof data.searched === "object" && !Array.isArray(data.searched)
+      ? data.searched : data;
+    for (const [k, v] of Object.entries(bag)) {
+      if (k === "unsearched" || k === "searched") continue;
+      if (v && typeof v === "object") searchedIds.add(String(k));
+    }
+    if (Array.isArray(data.unsearched)) {
+      searchListed = true;
+      unsearchedItems = data.unsearched;
+    }
+  }
+
+  function renderSearch() {
+    const box = $("search");
+    box.replaceChildren();
+    if (!searchLive) {
+      box.textContent = "Reports unavailable";
+      return;
+    }
+    const floors = ((building && building.floors) || []).slice().sort((a, b) => num(a.level) - num(b.level));
+    const used = new Set();
+    let shown = 0;
+    for (const fl of floors) {
+      const spaces = roomsOnFloor(fl);
+      if (!spaces.length) continue;
+      const done = spaces.filter((s) => searchedIds.has(String(s.id))).length;
+      let todo = [];
+      if (searchListed) {
+        unsearchedItems.forEach((item, i) => {
+          const id = itemId(item);
+          if (id && searchedIds.has(id)) return;
+          if (Number(itemLevel(item)) !== Number(fl.level)) return;
+          todo.push(item);
+          used.add(i);
+        });
+      } else {
+        todo = spaces.filter((s) => !searchedIds.has(String(s.id)));
+      }
+      shown += 1;
+      const block = document.createElement("div");
+      block.className = "floor-prog";
+      const head = document.createElement("div");
+      head.className = "rep-top";
+      const name = document.createElement("b");
+      name.textContent = "Floor " + fl.level;
+      const count = document.createElement("span");
+      count.className = "k";
+      count.textContent = done + " / " + spaces.length;
+      head.append(name, count);
+      const bar = document.createElement("div");
+      bar.className = "bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", String(spaces.length));
+      bar.setAttribute("aria-valuenow", String(done));
+      bar.setAttribute("aria-label", "Floor " + fl.level + " searched");
+      const fill = document.createElement("i");
+      fill.style.width = (spaces.length ? Math.round((done / spaces.length) * 100) : 0) + "%";
+      bar.appendChild(fill);
+      const line = document.createElement("div");
+      line.className = "todo";
+      if (!todo.length) line.textContent = "All searched.";
+      else {
+        const labels = todo.map(itemLabel).filter(Boolean);
+        labels.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        line.textContent = "Unsearched: " + labels.join(", ");
+      }
+      block.append(head, bar, line);
+      box.appendChild(block);
+    }
+    if (searchListed) {
+      const rest = [];
+      unsearchedItems.forEach((item, i) => {
+        if (used.has(i)) return;
+        const id = itemId(item);
+        if (id && searchedIds.has(id)) return;
+        const label = itemLabel(item);
+        if (label) rest.push(label);
+      });
+      if (rest.length) {
+        const line = document.createElement("div");
+        line.className = "todo";
+        rest.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        line.textContent = "Unsearched: " + rest.join(", ");
+        box.appendChild(line);
+        shown += 1;
+      }
+    }
+    if (!shown) box.textContent = "No rooms to search.";
+  }
+
+  function verticalMaps() {
+    const byId = new Map();
+    const byName = new Map();
+    for (const v of (building && building.vertical_connections) || []) {
+      if (!v || v.id == null) continue;
+      byId.set(String(v.id).trim().toLowerCase(), v);
+      if (v.name) byName.set(String(v.name).trim().toLowerCase(), v);
+    }
+    return { byId, byName };
+  }
+
+  function resolveVertical(token, maps) {
+    if (token == null || token === "") return null;
+    const key = String(token).trim().toLowerCase();
+    if (!key) return null;
+    return maps.byId.get(key) || maps.byName.get(key) || null;
+  }
+
+  function blockedVerticalSet() {
+    const ids = new Set();
+    if (!building) return ids;
+    const maps = verticalMaps();
+    const ordered = reports.slice().sort((a, b) => (timeMs(a.t) || 0) - (timeMs(b.t) || 0));
+    for (const rep of ordered) {
+      const updates = Array.isArray(rep.updates) ? rep.updates : [];
+      for (const u of updates) {
+        if (!u) continue;
+        const kind = chipKind(u);
+        if (kind !== "blocked" && kind !== "open" && kind !== "clear") continue;
+        const v = resolveVertical(u.target_id, maps) || resolveVertical(u.target_label, maps);
+        if (!v) continue;
+        const vid = String(v.id);
+        if (kind === "blocked") ids.add(vid);
+        else ids.delete(vid);
+      }
+    }
+    for (const [id, st] of Object.entries(state.verticals || {})) {
+      if (st !== "blocked") continue;
+      const v = resolveVertical(id, maps);
+      if (v) ids.add(String(v.id));
+    }
+    return ids;
+  }
+
+  function setRadio(msg, isError) {
+    const el = $("radioMsg");
+    el.textContent = msg || "";
+    el.className = isError ? "bad" : "k";
+  }
+
+  async function pollReportsOnce() {
+    let repRes;
+    let seaRes;
+    try {
+      [repRes, seaRes] = await Promise.all([
+        fetch("/api/reports", { cache: "no-store" }),
+        fetch("/api/reports/searched", { cache: "no-store" }),
+      ]);
+    } catch {
+      reportsLive = false;
+      searchLive = false;
+      renderReports();
+      renderSearch();
+      renderVictimAlert();
+      return;
+    }
+    if (repRes.status === 404 || repRes.status === 503 || !repRes.ok) {
+      reportsLive = false;
+    } else {
+      const data = await readBody(repRes);
+      reports = asReportList(data).filter((r) => r && typeof r === "object");
+      reports.sort((a, b) => (timeMs(b.t) || 0) - (timeMs(a.t) || 0));
+      reportsLive = true;
+    }
+    if (seaRes.status === 404 || seaRes.status === 503 || !seaRes.ok) {
+      searchLive = false;
+    } else {
+      applySearch(await readBody(seaRes));
+      searchLive = true;
+    }
+    renderReports();
+    renderSearch();
+    renderVictimAlert();
+    if (building) drawFloors();
+  }
+
+  function pollReports() {
+    const job = reportTail.then(pollReportsOnce, pollReportsOnce);
+    reportTail = job.then(() => {}, () => {});
+    return job;
+  }
+
+  $("victimAck").addEventListener("click", () => {
+    for (const key of openVictimKeys) ackedVictims.add(key);
+    renderVictimAlert();
+  });
+
+  $("radioForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const text = $("radioText").value.trim();
+    if (!text) return;
+    const btn = ev.currentTarget.querySelector("button");
+    btn.disabled = true;
+    try {
+      const { res, data } = await postJSON("/api/reports", { text: text, by: "Command" });
+      if (res.status === 404 || res.status === 503) {
+        setRadio("Reports unavailable", true);
+        return;
+      }
+      if (!res.ok) {
+        setRadio(detailOf(data, "Could not send the report."), true);
+        return;
+      }
+      const conf = data && data.confirmation;
+      setRadio(typeof conf === "string" && conf ? conf : "Report sent.");
+      $("radioText").value = "";
+      await pollReports();
+    } catch {
+      setRadio("Reports unavailable", true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  new ResizeObserver(() => drawFloors()).observe($("floors"));
+
+  async function boot() {
+    try {
+      const res = await fetch("/api/building", { cache: "no-store" });
+      const data = await readBody(res);
+      if (!res.ok) throw new Error(detailOf(data, "Could not load the building."));
+      building = data;
+    } catch (err) {
+      $("bname").textContent = err.message || "Could not load the building.";
+      showTimelineMessage("History unavailable.");
+      pollReports();
+      setInterval(() => { pollReports(); }, 3000);
+      return;
+    }
+    $("bname").textContent = building.building || "Building";
+    indexRooms();
+    fillRooms();
+    buildFloorCards();
+    renderPeople();
+    await pollLive();
+    loadBrief();
+    pollTimeline();
+    pollReports();
+    setInterval(() => { pollLive(); }, 2000);
+    setInterval(() => { pollTimeline(); }, 2000);
+    setInterval(() => { pollReports(); }, 3000);
+    setInterval(() => { if (fireRunning) loadBrief(); }, 10000);
+    requestAnimationFrame(() => drawFloors());
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

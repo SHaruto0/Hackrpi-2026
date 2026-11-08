@@ -1,0 +1,745 @@
+{
+  "building": "Darrin Communications Center (RPI)",
+  "units": "meters",
+  "scale_method": "Scale bar from drawings: Floor 1 is 1.0 inch = 40.0 feet (1:480), Floors 2 and 3 are 1.0 inch = 30.0 feet (1:360). Standard exterior doors calibrated to ~0.9 m to 1.8 m double doors.",
+  "floor_height_m": 4.2,
+  "floors": [
+    {
+      "level": 1,
+      "alignment": {
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+        "rotation_deg": 0.0
+      },
+      "outline": [
+        [12.0, 16.0],
+        [19.0, 16.0],
+        [19.0, 22.0],
+        [36.0, 22.0],
+        [36.0, 16.0],
+        [69.0, 16.0],
+        [69.0, 14.0],
+        [75.0, 14.0],
+        [75.0, 16.0],
+        [84.0, 16.0],
+        [84.0, 32.0],
+        [41.0, 32.0],
+        [41.0, 35.0],
+        [39.0, 37.0],
+        [33.0, 37.0],
+        [33.0, 32.0],
+        [12.0, 32.0]
+      ],
+      "walls": [
+        {"id": "F1-W-EXT1", "x1": 12.0, "y1": 16.0, "x2": 19.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT2", "x1": 19.0, "y1": 16.0, "x2": 19.0, "y2": 22.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT3", "x1": 19.0, "y1": 22.0, "x2": 36.0, "y2": 22.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT4", "x1": 36.0, "y1": 22.0, "x2": 36.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT5", "x1": 36.0, "y1": 16.0, "x2": 69.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT6", "x1": 69.0, "y1": 16.0, "x2": 69.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT7", "x1": 69.0, "y1": 14.0, "x2": 75.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT8", "x1": 75.0, "y1": 14.0, "x2": 75.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT9", "x1": 75.0, "y1": 16.0, "x2": 84.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT10", "x1": 84.0, "y1": 16.0, "x2": 84.0, "y2": 32.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT11", "x1": 84.0, "y1": 32.0, "x2": 41.0, "y2": 32.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT16", "x1": 41.0, "y1": 32.0, "x2": 41.0, "y2": 35.0, "exterior": true, "confidence": 0.9},
+        {"id": "F1-W-EXT15", "x1": 41.0, "y1": 35.0, "x2": 39.0, "y2": 37.0, "exterior": true, "confidence": 0.9},
+        {"id": "F1-W-EXT14", "x1": 39.0, "y1": 37.0, "x2": 33.0, "y2": 37.0, "exterior": true, "confidence": 0.9},
+        {"id": "F1-W-EXT13", "x1": 33.0, "y1": 37.0, "x2": 33.0, "y2": 32.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT18", "x1": 33.0, "y1": 32.0, "x2": 12.0, "y2": 32.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-EXT19", "x1": 12.0, "y1": 32.0, "x2": 12.0, "y2": 16.0, "exterior": true, "confidence": 0.95},
+        {"id": "F1-W-INT1", "x1": 12.0, "y1": 25.0, "x2": 36.0, "y2": 25.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT2", "x1": 12.0, "y1": 27.5, "x2": 84.0, "y2": 27.5, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT3A", "x1": 36.0, "y1": 16.0, "x2": 36.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT3B", "x1": 36.0, "y1": 27.5, "x2": 36.0, "y2": 32.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT4", "x1": 43.0, "y1": 16.0, "x2": 43.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT4B", "x1": 43.0, "y1": 27.5, "x2": 43.0, "y2": 32.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT5", "x1": 56.0, "y1": 16.0, "x2": 56.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT5B", "x1": 56.0, "y1": 27.5, "x2": 56.0, "y2": 32.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT6", "x1": 69.0, "y1": 16.0, "x2": 69.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT7", "x1": 75.0, "y1": 16.0, "x2": 75.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F1-W-INT8", "x1": 36.0, "y1": 24.0, "x2": 84.0, "y2": 24.0, "exterior": false, "confidence": 0.95},
+        {"id": "F1-W-INT9", "x1": 69.0, "y1": 19.0, "x2": 75.0, "y2": 19.0, "exterior": false, "confidence": 0.95},
+        {"id": "F1-W-INT10", "x1": 33.0, "y1": 32.0, "x2": 39.0, "y2": 32.0, "exterior": false, "confidence": 0.95}
+      ],
+      "spaces": [
+        {
+          "id": "F1-180",
+          "label": "180 MECH EQUIP",
+          "type": "mechanical",
+          "polygon": [[12.0, 16.0], [19.0, 16.0], [19.0, 22.0], [19.0, 25.0], [12.0, 25.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F1-WRPI",
+          "label": "106 MEDIA RADIO WRPI",
+          "type": "office",
+          "polygon": [[12.0, 27.5], [20.0, 27.5], [20.0, 32.0], [12.0, 32.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-113",
+          "label": "113 MEDIA SERV",
+          "type": "office",
+          "polygon": [[20.0, 27.5], [26.0, 27.5], [26.0, 32.0], [20.0, 32.0]],
+          "multi_floor": false,
+          "confidence": 0.88
+        },
+        {
+          "id": "F1-119",
+          "label": "119 LOBBY",
+          "type": "lobby",
+          "polygon": [[29.0, 27.5], [36.0, 27.5], [36.0, 32.0], [29.0, 32.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F1-1ST1",
+          "label": "1ST1 STAIR",
+          "type": "stairwell",
+          "polygon": [[33.0, 32.0], [39.0, 32.0], [39.0, 37.0], [33.0, 37.0]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F1-120",
+          "label": "120 CORRIDOR",
+          "type": "hallway",
+          "polygon": [[19.0, 25.0], [36.0, 25.0], [36.0, 27.5], [19.0, 27.5]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F1-125",
+          "label": "125 LAB OPEN",
+          "type": "classroom",
+          "polygon": [[26.0, 22.0], [36.0, 22.0], [36.0, 25.0], [26.0, 25.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-137",
+          "label": "137 C LAB STUDIO",
+          "type": "classroom",
+          "polygon": [[36.0, 16.0], [43.0, 16.0], [43.0, 24.0], [36.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.88
+        },
+        {
+          "id": "F1-174",
+          "label": "174 C LAB STUDIO",
+          "type": "classroom",
+          "polygon": [[43.0, 16.0], [56.0, 16.0], [56.0, 24.0], [43.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-170",
+          "label": "170 MEDIA TV CHROMA KEY",
+          "type": "classroom",
+          "polygon": [[56.0, 16.0], [69.0, 16.0], [69.0, 24.0], [56.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-1E",
+          "label": "1-E ELEVATOR",
+          "type": "elevator",
+          "polygon": [[69.0, 14.0], [75.0, 14.0], [75.0, 19.0], [69.0, 19.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F1-160",
+          "label": "160 MEDIA SERV OFFICE",
+          "type": "office",
+          "polygon": [[75.0, 16.0], [84.0, 16.0], [84.0, 24.0], [75.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F1-1ST3",
+          "label": "1ST3 STAIR",
+          "type": "stairwell",
+          "polygon": [[80.0, 27.5], [84.0, 27.5], [84.0, 32.0], [80.0, 32.0]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F1-150",
+          "label": "150 MO MAIN OFFICE",
+          "type": "office",
+          "polygon": [[43.0, 27.5], [56.0, 27.5], [56.0, 32.0], [43.0, 32.0]],
+          "multi_floor": false,
+          "confidence": 0.88
+        },
+        {
+          "id": "F1-158",
+          "label": "158 CORRIDOR",
+          "type": "hallway",
+          "polygon": [[36.0, 24.0], [84.0, 24.0], [84.0, 27.5], [36.0, 27.5]],
+          "multi_floor": false,
+          "confidence": 0.95
+        }
+      ],
+      "doors": [
+        {"id": "F1-D1", "x": 12.0, "y": 20.0, "width": 1.2, "connects": ["F1-180", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F1-D2", "x": 19.0, "y": 25.0, "width": 0.9, "connects": ["F1-180", "F1-120"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F1-D3", "x": 16.0, "y": 27.5, "width": 0.9, "connects": ["F1-WRPI", "F1-120"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F1-D4", "x": 23.0, "y": 27.5, "width": 0.9, "connects": ["F1-113", "F1-120"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F1-D5", "x": 31.0, "y": 27.5, "width": 1.8, "connects": ["F1-119", "F1-120"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F1-D6", "x": 36.0, "y": 32.0, "width": 1.2, "connects": ["F1-119", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F1-D7", "x": 34.5, "y": 32.0, "width": 0.9, "connects": ["F1-1ST1", "F1-119"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F1-D8", "x": 31.0, "y": 25.0, "width": 0.9, "connects": ["F1-125", "F1-120"], "exterior_exit": false, "confidence": 0.88},
+        {"id": "F1-D9", "x": 40.0, "y": 24.0, "width": 0.9, "connects": ["F1-137", "F1-158"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F1-D10", "x": 49.0, "y": 24.0, "width": 0.9, "connects": ["F1-174", "F1-158"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F1-D11", "x": 62.0, "y": 24.0, "width": 0.9, "connects": ["F1-170", "F1-158"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F1-D12", "x": 72.0, "y": 19.0, "width": 1.1, "connects": ["F1-1E", "F1-158"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F1-D13", "x": 77.0, "y": 24.0, "width": 0.9, "connects": ["F1-160", "F1-158"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F1-D14", "x": 80.0, "y": 27.5, "width": 0.9, "connects": ["F1-1ST3", "F1-158"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F1-D15", "x": 50.0, "y": 27.5, "width": 0.9, "connects": ["F1-150", "F1-158"], "exterior_exit": false, "confidence": 0.9}
+      ],
+      "notes": "Level 100 DCC floor plan containing media production studios, WRPI radio station, IT / telecomm facilities, mechanical rooms, and stair cores."
+    },
+    {
+      "level": 2,
+      "alignment": {
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+        "rotation_deg": 0.0
+      },
+      "outline": [
+        [0.0, 14.0],
+        [5.0, 14.0],
+        [5.0, 9.0],
+        [15.0, 9.0],
+        [15.0, 14.0],
+        [36.0, 14.0],
+        [36.0, 19.0],
+        [64.0, 19.0],
+        [64.0, 14.0],
+        [75.0, 14.0],
+        [75.0, 19.0],
+        [96.0, 19.0],
+        [96.0, 42.0],
+        [37.0, 42.0],
+        [37.0, 47.0],
+        [28.0, 47.0],
+        [28.0, 42.0],
+        [0.0, 42.0]
+      ],
+      "walls": [
+        {"id": "F2-W-EXT1", "x1": 0.0, "y1": 14.0, "x2": 5.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT2", "x1": 5.0, "y1": 14.0, "x2": 5.0, "y2": 9.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT3", "x1": 5.0, "y1": 9.0, "x2": 15.0, "y2": 9.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT4", "x1": 15.0, "y1": 9.0, "x2": 15.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT5", "x1": 15.0, "y1": 14.0, "x2": 36.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT6", "x1": 36.0, "y1": 14.0, "x2": 36.0, "y2": 19.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT7", "x1": 36.0, "y1": 19.0, "x2": 64.0, "y2": 19.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT8", "x1": 64.0, "y1": 19.0, "x2": 64.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT9", "x1": 64.0, "y1": 14.0, "x2": 75.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT10", "x1": 75.0, "y1": 14.0, "x2": 75.0, "y2": 19.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT11", "x1": 75.0, "y1": 19.0, "x2": 96.0, "y2": 19.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT12", "x1": 96.0, "y1": 19.0, "x2": 96.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT17", "x1": 96.0, "y1": 42.0, "x2": 37.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT18", "x1": 37.0, "y1": 42.0, "x2": 37.0, "y2": 47.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT19", "x1": 37.0, "y1": 47.0, "x2": 28.0, "y2": 47.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT20", "x1": 28.0, "y1": 47.0, "x2": 28.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT21", "x1": 28.0, "y1": 42.0, "x2": 0.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-EXT22", "x1": 0.0, "y1": 42.0, "x2": 0.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F2-W-INT1", "x1": 33.0, "y1": 37.0, "x2": 78.0, "y2": 37.0, "exterior": false, "confidence": 0.92},
+        {"id": "F2-W-INT2", "x1": 28.0, "y1": 42.0, "x2": 37.0, "y2": 42.0, "exterior": false, "confidence": 0.95},
+        {"id": "F2-W-INT3", "x1": 0.0, "y1": 20.0, "x2": 8.0, "y2": 20.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT4", "x1": 8.0, "y1": 20.0, "x2": 8.0, "y2": 28.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT5", "x1": 0.0, "y1": 28.0, "x2": 8.0, "y2": 28.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT6", "x1": 0.0, "y1": 31.0, "x2": 10.0, "y2": 31.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT7", "x1": 6.0, "y1": 28.0, "x2": 6.0, "y2": 31.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT8", "x1": 10.0, "y1": 31.0, "x2": 10.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT9", "x1": 10.0, "y1": 32.0, "x2": 23.0, "y2": 32.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT10", "x1": 23.0, "y1": 32.0, "x2": 23.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT11", "x1": 33.0, "y1": 37.0, "x2": 33.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT12", "x1": 42.0, "y1": 37.0, "x2": 42.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT13", "x1": 50.0, "y1": 37.0, "x2": 50.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT14", "x1": 58.0, "y1": 37.0, "x2": 58.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT15", "x1": 67.0, "y1": 37.0, "x2": 67.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT16", "x1": 76.0, "y1": 37.0, "x2": 76.0, "y2": 42.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT17", "x1": 42.0, "y1": 19.0, "x2": 42.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT18", "x1": 52.0, "y1": 19.0, "x2": 52.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT19", "x1": 42.0, "y1": 24.0, "x2": 52.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT20", "x1": 69.0, "y1": 19.0, "x2": 75.0, "y2": 19.0, "exterior": false, "confidence": 0.95},
+        {"id": "F2-W-INT21", "x1": 92.0, "y1": 19.0, "x2": 92.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT22", "x1": 92.0, "y1": 24.0, "x2": 96.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT23", "x1": 88.0, "y1": 25.0, "x2": 96.0, "y2": 25.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT24", "x1": 88.0, "y1": 25.0, "x2": 88.0, "y2": 34.0, "exterior": false, "confidence": 0.9},
+        {"id": "F2-W-INT25", "x1": 88.0, "y1": 34.0, "x2": 96.0, "y2": 34.0, "exterior": false, "confidence": 0.9}
+      ],
+      "spaces": [
+        {
+          "id": "F2-207",
+          "label": "207 CONFERENCE CDC",
+          "type": "classroom",
+          "polygon": [[0.0, 20.0], [8.0, 20.0], [8.0, 28.0], [0.0, 28.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-210_213",
+          "label": "210-213 OFFICE ADMIN CDC",
+          "type": "office",
+          "polygon": [[0.0, 31.0], [10.0, 31.0], [10.0, 42.0], [0.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-217",
+          "label": "217 STUDY ROOM CDC",
+          "type": "classroom",
+          "polygon": [[10.0, 32.0], [23.0, 32.0], [23.0, 42.0], [10.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-218",
+          "label": "218 LOBBY",
+          "type": "lobby",
+          "polygon": [[8.0, 20.0], [33.0, 20.0], [33.0, 42.0], [23.0, 42.0], [23.0, 32.0], [10.0, 32.0], [10.0, 28.0], [8.0, 28.0]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F2-2ST1",
+          "label": "2ST1 STAIR",
+          "type": "stairwell",
+          "polygon": [[28.0, 42.0], [37.0, 42.0], [37.0, 47.0], [28.0, 47.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F2-2ST7",
+          "label": "2ST7 STAIR",
+          "type": "stairwell",
+          "polygon": [[0.0, 28.0], [6.0, 28.0], [6.0, 31.0], [0.0, 31.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-2ST2",
+          "label": "2ST2 STAIR",
+          "type": "stairwell",
+          "polygon": [[5.0, 9.0], [15.0, 9.0], [15.0, 14.0], [5.0, 14.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F2-219",
+          "label": "219 CORRIDOR",
+          "type": "hallway",
+          "polygon": [[33.0, 32.0], [78.0, 32.0], [78.0, 37.0], [33.0, 37.0]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F2-232",
+          "label": "232 CLASSROOM",
+          "type": "classroom",
+          "polygon": [[33.0, 37.0], [42.0, 37.0], [42.0, 42.0], [33.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F2-235",
+          "label": "235 CLASSROOM",
+          "type": "classroom",
+          "polygon": [[42.0, 37.0], [50.0, 37.0], [50.0, 42.0], [42.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F2-236",
+          "label": "236 CLASSROOM",
+          "type": "classroom",
+          "polygon": [[50.0, 37.0], [58.0, 37.0], [58.0, 42.0], [50.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F2-239",
+          "label": "239 CLASSROOM",
+          "type": "classroom",
+          "polygon": [[58.0, 37.0], [67.0, 37.0], [67.0, 42.0], [58.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F2-240",
+          "label": "240 CLASSROOM",
+          "type": "classroom",
+          "polygon": [[67.0, 37.0], [76.0, 37.0], [76.0, 42.0], [67.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F2-250",
+          "label": "250 CORRIDOR",
+          "type": "hallway",
+          "polygon": [[36.0, 24.0], [75.0, 24.0], [75.0, 28.0], [36.0, 28.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-252",
+          "label": "252 OFFICE RU CLUBS",
+          "type": "office",
+          "polygon": [[42.0, 19.0], [52.0, 19.0], [52.0, 24.0], [42.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.88
+        },
+        {
+          "id": "F2-2E",
+          "label": "2-E ELEVATOR",
+          "type": "elevator",
+          "polygon": [[69.0, 14.0], [75.0, 14.0], [75.0, 19.0], [69.0, 19.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F2-243",
+          "label": "243 CENTRAL STOR",
+          "type": "storage",
+          "polygon": [[88.0, 25.0], [96.0, 25.0], [96.0, 34.0], [88.0, 34.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F2-2ST3",
+          "label": "2ST3 STAIR",
+          "type": "stairwell",
+          "polygon": [[92.0, 19.0], [96.0, 19.0], [96.0, 24.0], [92.0, 24.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        }
+      ],
+      "doors": [
+        {"id": "F2-D1", "x": 0.0, "y": 25.0, "width": 1.2, "connects": ["F2-207", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F2-D2", "x": 8.0, "y": 24.0, "width": 0.9, "connects": ["F2-207", "F2-218"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F2-D3", "x": 10.0, "y": 35.0, "width": 0.9, "connects": ["F2-210_213", "F2-218"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F2-D4", "x": 15.0, "y": 32.0, "width": 0.9, "connects": ["F2-217", "F2-218"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F2-D5", "x": 32.0, "y": 42.0, "width": 1.2, "connects": ["F2-2ST1", "F2-218"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F2-D6", "x": 5.0, "y": 14.0, "width": 1.0, "connects": ["F2-2ST2", "OUTSIDE"], "exterior_exit": true, "confidence": 0.9},
+        {"id": "F2-D7", "x": 37.0, "y": 37.0, "width": 0.9, "connects": ["F2-232", "F2-219"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F2-D8", "x": 46.0, "y": 37.0, "width": 0.9, "connects": ["F2-235", "F2-219"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F2-D9", "x": 54.0, "y": 37.0, "width": 0.9, "connects": ["F2-236", "F2-219"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F2-D10", "x": 62.0, "y": 37.0, "width": 0.9, "connects": ["F2-239", "F2-219"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F2-D11", "x": 71.0, "y": 37.0, "width": 0.9, "connects": ["F2-240", "F2-219"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F2-D12", "x": 47.0, "y": 24.0, "width": 0.9, "connects": ["F2-252", "F2-250"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F2-D13", "x": 72.0, "y": 19.0, "width": 1.1, "connects": ["F2-2E", "F2-250"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F2-D14", "x": 92.0, "y": 21.5, "width": 0.9, "connects": ["F2-2ST3", "OUTSIDE"], "exterior_exit": true, "confidence": 0.92},
+        {"id": "F2-D15", "x": 88.0, "y": 29.0, "width": 1.2, "connects": ["F2-243", "F2-250"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F2-D16", "x": 6.0, "y": 29.5, "width": 0.9, "connects": ["F2-2ST7", "F2-218"], "exterior_exit": false, "confidence": 0.9}
+      ],
+      "notes": "Level 200 contains classrooms DCC 232, 235, 236, 239, 240, CDC offices and conference room, central storage, and openings underneath the sloped tiered lecture halls above."
+    },
+    {
+      "level": 3,
+      "alignment": {
+        "offset_x": 0.0,
+        "offset_y": 0.0,
+        "rotation_deg": 0.0
+      },
+      "outline": [
+        [1.0, 14.0],
+        [4.0, 14.0],
+        [4.0, 8.0],
+        [14.0, 8.0],
+        [14.0, 14.0],
+        [36.0, 14.0],
+        [36.0, 9.0],
+        [80.0, 9.0],
+        [80.0, 14.0],
+        [96.0, 14.0],
+        [96.0, 42.0],
+        [37.0, 42.0],
+        [37.0, 47.0],
+        [27.0, 47.0],
+        [27.0, 42.0],
+        [1.0, 42.0]
+      ],
+      "walls": [
+        {"id": "F3-W-EXT1", "x1": 1.0, "y1": 14.0, "x2": 4.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT2", "x1": 4.0, "y1": 14.0, "x2": 4.0, "y2": 8.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT3", "x1": 4.0, "y1": 8.0, "x2": 14.0, "y2": 8.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT4", "x1": 14.0, "y1": 8.0, "x2": 14.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT5", "x1": 14.0, "y1": 14.0, "x2": 36.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT6", "x1": 36.0, "y1": 14.0, "x2": 36.0, "y2": 9.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT7", "x1": 36.0, "y1": 9.0, "x2": 80.0, "y2": 9.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT8", "x1": 80.0, "y1": 9.0, "x2": 80.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT9", "x1": 80.0, "y1": 14.0, "x2": 96.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT10", "x1": 96.0, "y1": 14.0, "x2": 96.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT11", "x1": 96.0, "y1": 42.0, "x2": 37.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT12", "x1": 37.0, "y1": 42.0, "x2": 37.0, "y2": 47.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT13", "x1": 37.0, "y1": 47.0, "x2": 27.0, "y2": 47.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT14", "x1": 27.0, "y1": 47.0, "x2": 27.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT15", "x1": 27.0, "y1": 42.0, "x2": 1.0, "y2": 42.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-EXT16", "x1": 1.0, "y1": 42.0, "x2": 1.0, "y2": 14.0, "exterior": true, "confidence": 0.95},
+        {"id": "F3-W-INT1", "x1": 31.0, "y1": 35.0, "x2": 78.0, "y2": 35.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT2", "x1": 27.0, "y1": 42.0, "x2": 37.0, "y2": 42.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT3", "x1": 4.0, "y1": 14.0, "x2": 14.0, "y2": 14.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT4", "x1": 7.0, "y1": 14.0, "x2": 7.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT5", "x1": 1.0, "y1": 19.0, "x2": 7.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT6", "x1": 1.0, "y1": 24.0, "x2": 7.0, "y2": 24.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT7", "x1": 8.0, "y1": 16.0, "x2": 30.0, "y2": 16.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT8", "x1": 30.0, "y1": 16.0, "x2": 28.0, "y2": 36.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT9", "x1": 5.0, "y1": 36.0, "x2": 28.0, "y2": 36.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT10", "x1": 5.0, "y1": 32.0, "x2": 5.0, "y2": 36.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT11", "x1": 5.0, "y1": 32.0, "x2": 8.0, "y2": 16.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT12", "x1": 33.0, "y1": 20.0, "x2": 48.0, "y2": 20.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT13", "x1": 33.0, "y1": 20.0, "x2": 33.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT14", "x1": 48.0, "y1": 20.0, "x2": 48.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT15", "x1": 50.0, "y1": 20.0, "x2": 63.0, "y2": 20.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT16", "x1": 50.0, "y1": 20.0, "x2": 50.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT17", "x1": 63.0, "y1": 20.0, "x2": 63.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT18", "x1": 64.0, "y1": 20.0, "x2": 77.0, "y2": 20.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT19", "x1": 64.0, "y1": 20.0, "x2": 64.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT20", "x1": 77.0, "y1": 20.0, "x2": 77.0, "y2": 35.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT21", "x1": 78.0, "y1": 22.0, "x2": 92.0, "y2": 22.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT22", "x1": 78.0, "y1": 22.0, "x2": 78.0, "y2": 36.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT23", "x1": 92.0, "y1": 22.0, "x2": 92.0, "y2": 36.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT24", "x1": 78.0, "y1": 36.0, "x2": 92.0, "y2": 36.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT25", "x1": 48.0, "y1": 10.0, "x2": 63.0, "y2": 10.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT26", "x1": 48.0, "y1": 10.0, "x2": 48.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT27", "x1": 48.0, "y1": 19.0, "x2": 63.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT28", "x1": 63.0, "y1": 10.0, "x2": 63.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT29", "x1": 64.0, "y1": 10.0, "x2": 78.0, "y2": 10.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT30", "x1": 64.0, "y1": 10.0, "x2": 64.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT31", "x1": 64.0, "y1": 19.0, "x2": 78.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT32", "x1": 78.0, "y1": 10.0, "x2": 78.0, "y2": 19.0, "exterior": false, "confidence": 0.9},
+        {"id": "F3-W-INT33", "x1": 69.0, "y1": 14.0, "x2": 69.0, "y2": 19.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT34", "x1": 75.0, "y1": 14.0, "x2": 75.0, "y2": 19.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT35", "x1": 69.0, "y1": 14.0, "x2": 75.0, "y2": 14.0, "exterior": false, "confidence": 0.95},
+        {"id": "F3-W-INT36", "x1": 69.0, "y1": 19.0, "x2": 75.0, "y2": 19.0, "exterior": false, "confidence": 0.95}
+      ],
+      "spaces": [
+        {
+          "id": "F3-308",
+          "label": "308 CLASS LEC (498 SEATS)",
+          "type": "lecture_hall",
+          "polygon": [[8.0, 16.0], [30.0, 16.0], [28.0, 36.0], [5.0, 36.0], [5.0, 32.0]],
+          "multi_floor": true,
+          "confidence": 0.98
+        },
+        {
+          "id": "F3-318",
+          "label": "318 CLASS LEC (235 SEATS)",
+          "type": "lecture_hall",
+          "polygon": [[33.0, 20.0], [48.0, 20.0], [48.0, 35.0], [33.0, 35.0]],
+          "multi_floor": true,
+          "confidence": 0.98
+        },
+        {
+          "id": "F3-324",
+          "label": "324 CLASS LEC (169 SEATS)",
+          "type": "lecture_hall",
+          "polygon": [[50.0, 20.0], [63.0, 20.0], [63.0, 35.0], [50.0, 35.0]],
+          "multi_floor": true,
+          "confidence": 0.98
+        },
+        {
+          "id": "F3-330",
+          "label": "330 CLASS LEC (153 SEATS)",
+          "type": "lecture_hall",
+          "polygon": [[64.0, 20.0], [77.0, 20.0], [77.0, 35.0], [64.0, 35.0]],
+          "multi_floor": true,
+          "confidence": 0.98
+        },
+        {
+          "id": "F3-337",
+          "label": "337 CLASS LEC (116 SEATS)",
+          "type": "lecture_hall",
+          "polygon": [[78.0, 22.0], [92.0, 22.0], [92.0, 36.0], [78.0, 36.0]],
+          "multi_floor": true,
+          "confidence": 0.98
+        },
+        {
+          "id": "F3-316",
+          "label": "316 LOBBY",
+          "type": "lobby",
+          "polygon": [[18.0, 35.0], [31.0, 35.0], [31.0, 42.0], [18.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.95
+        },
+        {
+          "id": "F3-317",
+          "label": "317 CORRIDOR / CONCOURSE",
+          "type": "hallway",
+          "polygon": [[31.0, 35.0], [78.0, 35.0], [78.0, 42.0], [31.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.96
+        },
+        {
+          "id": "F3-341",
+          "label": "341 LOUNGE / CONCOURSE",
+          "type": "lobby",
+          "polygon": [[78.0, 36.0], [95.0, 36.0], [95.0, 42.0], [78.0, 42.0]],
+          "multi_floor": false,
+          "confidence": 0.92
+        },
+        {
+          "id": "F3-3ST1",
+          "label": "3ST1 STAIR",
+          "type": "stairwell",
+          "polygon": [[27.0, 42.0], [37.0, 42.0], [37.0, 47.0], [27.0, 47.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F3-3ST2",
+          "label": "3ST2 STAIR",
+          "type": "stairwell",
+          "polygon": [[4.0, 8.0], [14.0, 8.0], [14.0, 14.0], [4.0, 14.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F3-3E",
+          "label": "3-E ELEVATOR",
+          "type": "elevator",
+          "polygon": [[69.0, 14.0], [75.0, 14.0], [75.0, 19.0], [69.0, 19.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F3-3ST3",
+          "label": "3ST3 STAIR",
+          "type": "stairwell",
+          "polygon": [[92.0, 14.0], [96.0, 14.0], [96.0, 20.0], [92.0, 20.0]],
+          "multi_floor": true,
+          "confidence": 0.95
+        },
+        {
+          "id": "F3-304",
+          "label": "304 WOMENS LAV",
+          "type": "restroom",
+          "polygon": [[1.0, 14.0], [7.0, 14.0], [7.0, 19.0], [1.0, 19.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-305",
+          "label": "305 MENS LAV",
+          "type": "restroom",
+          "polygon": [[1.0, 19.0], [7.0, 19.0], [7.0, 24.0], [1.0, 24.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-329",
+          "label": "329 INTERVIEW MEETING ROOMS",
+          "type": "office",
+          "polygon": [[48.0, 10.0], [63.0, 10.0], [63.0, 19.0], [48.0, 19.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        },
+        {
+          "id": "F3-335",
+          "label": "335 INTERVIEW MEETING ROOMS",
+          "type": "office",
+          "polygon": [[64.0, 10.0], [78.0, 10.0], [78.0, 19.0], [64.0, 19.0]],
+          "multi_floor": false,
+          "confidence": 0.9
+        }
+      ],
+      "doors": [
+        {"id": "F3-D1", "x": 1.0, "y": 26.0, "width": 1.8, "connects": ["F3-308", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F3-D2", "x": 24.0, "y": 36.0, "width": 1.8, "connects": ["F3-308", "F3-316"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D3", "x": 40.0, "y": 35.0, "width": 1.8, "connects": ["F3-318", "F3-317"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D4", "x": 56.0, "y": 35.0, "width": 1.8, "connects": ["F3-324", "F3-317"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D5", "x": 70.0, "y": 35.0, "width": 1.8, "connects": ["F3-330", "F3-317"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D6", "x": 84.0, "y": 36.0, "width": 1.8, "connects": ["F3-337", "F3-341"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D7", "x": 32.0, "y": 42.0, "width": 1.8, "connects": ["F3-3ST1", "F3-317"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D8", "x": 9.0, "y": 14.0, "width": 1.2, "connects": ["F3-3ST2", "F3-308"], "exterior_exit": false, "confidence": 0.92},
+        {"id": "F3-D9", "x": 72.0, "y": 19.0, "width": 1.1, "connects": ["F3-3E", "F3-317"], "exterior_exit": false, "confidence": 0.95},
+        {"id": "F3-D10", "x": 94.0, "y": 14.0, "width": 1.2, "connects": ["F3-3ST3", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F3-D11", "x": 55.0, "y": 42.0, "width": 2.4, "connects": ["F3-317", "OUTSIDE"], "exterior_exit": true, "confidence": 0.98},
+        {"id": "F3-D12", "x": 90.0, "y": 42.0, "width": 1.8, "connects": ["F3-341", "OUTSIDE"], "exterior_exit": true, "confidence": 0.95},
+        {"id": "F3-D13", "x": 7.0, "y": 16.5, "width": 0.9, "connects": ["F3-304", "F3-308"], "exterior_exit": false, "confidence": 0.88},
+        {"id": "F3-D14", "x": 7.0, "y": 21.5, "width": 0.9, "connects": ["F3-305", "F3-308"], "exterior_exit": false, "confidence": 0.88},
+        {"id": "F3-D15", "x": 55.0, "y": 19.0, "width": 0.9, "connects": ["F3-329", "F3-317"], "exterior_exit": false, "confidence": 0.9},
+        {"id": "F3-D16", "x": 66.0, "y": 19.0, "width": 0.9, "connects": ["F3-335", "F3-317"], "exterior_exit": false, "confidence": 0.9}
+      ],
+      "notes": "Level 300 is the main auditorium and lecture concourse floor featuring DCC 308 (grand lecture hall/auditorium), tiered lecture halls 318, 324, 330, and 337, main entrance vestibules/exits to campus along the south curtain wall, and interview suites."
+    }
+  ],
+  "vertical_connections": [
+    {
+      "id": "STAIR-1",
+      "name": "Main South Semi-Circular Stair (2ST1 / 3ST1)",
+      "type": "stairs",
+      "x": 33.0,
+      "y": 43.5,
+      "floors": [2, 3],
+      "confidence": 0.98
+    },
+    {
+      "id": "STAIR-2",
+      "name": "Northwest Stair Tower (2ST2 / 3ST2)",
+      "type": "stairs",
+      "x": 9.0,
+      "y": 11.5,
+      "floors": [2, 3],
+      "confidence": 0.95
+    },
+    {
+      "id": "STAIR-3",
+      "name": "Northeast Exit Stair (2ST3 / 3ST3)",
+      "type": "stairs",
+      "x": 94.0,
+      "y": 19.5,
+      "floors": [2, 3],
+      "confidence": 0.95
+    },
+    {
+      "id": "ELEV-1",
+      "name": "Main Passenger Elevator (1-E / 2-E / 3-E)",
+      "type": "elevator",
+      "x": 72.0,
+      "y": 16.5,
+      "floors": [1, 2, 3],
+      "confidence": 0.96
+    }
+  ],
+  "multi_floor_spaces": [
+    {
+      "id": "LECTURE-HALL-308",
+      "label": "DCC 308 Auditorium",
+      "floors": [2, 3],
+      "door_ids": ["F3-D1", "F3-D2", "F3-D8"]
+    },
+    {
+      "id": "LECTURE-HALL-318",
+      "label": "DCC 318 Tiered Lecture Hall",
+      "floors": [2, 3],
+      "door_ids": ["F3-D3"]
+    },
+    {
+      "id": "LECTURE-HALL-324",
+      "label": "DCC 324 Tiered Lecture Hall",
+      "floors": [2, 3],
+      "door_ids": ["F3-D4"]
+    },
+    {
+      "id": "LECTURE-HALL-330",
+      "label": "DCC 330 Tiered Lecture Hall",
+      "floors": [2, 3],
+      "door_ids": ["F3-D5"]
+    },
+    {
+      "id": "LECTURE-HALL-337",
+      "label": "DCC 337 Tiered Lecture Hall",
+      "floors": [2, 3],
+      "door_ids": ["F3-D6"]
+    }
+  ],
+  "global_notes": "Darrin Communications Center (RPI) aligned across 3 levels. Tiered lecture halls 308, 318, 324, 330, and 337 occupy a double-height volume spanning Levels 200 and 300 with primary entrances from the Level 300 concourse. Level 100 sits into the grade with television studios, radio facilities, and media labs. Primary vertical circulation relies on Stair 2ST1/3ST1 on the south facade, northeast and northwest stair towers, and elevator 1-E/2-E/3-E in the north-central core."
+}
