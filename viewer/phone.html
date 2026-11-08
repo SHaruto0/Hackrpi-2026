@@ -184,13 +184,15 @@ window.__firesightCreateAgent = createFiresightAgent;
     display: flex; flex-direction: column;
     padding-top: env(safe-area-inset-top);
   }
-  #mapBig { flex: 1; width: 100%; touch-action: none; }
+  #floorStage { flex: 1; min-height: 0; position: relative; touch-action: none; background: #2a313c; }
+  #floorStage canvas { display: block; width: 100%; height: 100%; }
+  #mapBig { display: none; }
   .map-ui {
     display: flex; gap: 12px; align-items: center;
     padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   }
   .map-ui p { flex: 1; margin: 0; font-size: 18px; font-weight: 800; }
-  #btnMapClose {
+  #btnMapClose, #btnMapHome {
     min-height: 52px; min-width: 120px; border-radius: 12px; border: 2px solid #fff;
     background: #161b22; font-weight: 800;
   }
@@ -244,6 +246,9 @@ window.__firesightCreateAgent = createFiresightAgent;
   <canvas id="minimap" role="button" tabindex="0" aria-label="Floor map. Tap to expand."></canvas>
   <div id="toast" hidden></div>
   <div id="bar">
+    <div class="row">
+      <button id="btnHome" type="button">Change room</button>
+    </div>
     <div class="seg" role="group" aria-label="Position source">
       <button id="btnSensors" type="button" aria-pressed="true">Sensors</button>
       <button id="btnDemo" type="button" aria-pressed="false">Demo walk</button>
@@ -264,9 +269,11 @@ window.__firesightCreateAgent = createFiresightAgent;
 </section>
 
 <section id="mapFull" hidden>
-  <canvas id="mapBig" aria-label="Tap the map to set where you are"></canvas>
+  <div id="floorStage" aria-label="This floor. The green marker is you. Tap the floor to move it."></div>
+  <canvas id="mapBig" hidden></canvas>
   <div class="map-ui">
-    <p>Tap where you are</p>
+    <p id="floorCaption">This floor. Green marker is you.</p>
+    <button id="btnMapHome" type="button">Change room</button>
     <button id="btnMapClose" type="button">Close</button>
   </div>
 </section>
@@ -958,12 +965,28 @@ window.__firesightCreateAgent = createFiresightAgent;
     if (queue.length && !muted) drain();
   }
 
+  function speakNow(text) {
+    if (muted || !text || !window.speechSynthesis) return;
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = "en-US";
+    u.rate = 0.95;
+    u.volume = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+    window.speechSynthesis.speak(u);
+  }
+
+  let ttsBroken = false;
   async function playTts(text) {
+    if (ttsBroken) return "fallback";
     const my = ++clipId;
     let url = "";
+    const ctrl = new AbortController();
+    const kill = setTimeout(() => ctrl.abort(), 2500);
     try {
-      const res = await fetch("/api/voice/tts?style=occupant&text=" + encodeURIComponent(text), { cache: "no-store" });
+      const res = await fetch("/api/voice/tts?style=occupant&text=" + encodeURIComponent(text), { cache: "no-store", signal: ctrl.signal });
       if (my !== clipId || muted) return "stopped";
+      if (res.status === 503) { ttsBroken = true; return "fallback"; }
       if (!res.ok) return "fallback";
       const blob = await res.blob();
       if (my !== clipId || muted) return "stopped";
@@ -990,8 +1013,10 @@ window.__firesightCreateAgent = createFiresightAgent;
       return "ok";
     } catch (e) {
       if (my !== clipId || muted) return "stopped";
+      ttsBroken = true;
       return "fallback";
     } finally {
+      clearTimeout(kill);
       if (url) URL.revokeObjectURL(url);
     }
   }
@@ -1004,9 +1029,11 @@ window.__firesightCreateAgent = createFiresightAgent;
       if (!synth || muted) { finish(); return; }
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "en-US";
-      u.rate = 1;
+      u.rate = 0.95;
+      u.volume = 1;
       u.onend = finish;
       u.onerror = finish;
+      synth.resume();
       synth.speak(u);
       setTimeout(finish, 15000);
     });
@@ -1101,13 +1128,82 @@ window.__firesightCreateAgent = createFiresightAgent;
     return null;
   }
 
+  function bearingDeg(x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    if (dx * dx + dy * dy < 1e-8) return null;
+    return (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
+  }
+
+  function turnBetween(heading, after) {
+    if (heading == null || after == null) return "straight";
+    const delta = ((after - heading + 540) % 360) - 180;
+    if (Math.abs(delta) < 30) return "straight";
+    return delta > 0 ? "right" : "left";
+  }
+
+  // Next maneuver from the person's current spot, not the last server poll.
+  function localGuide() {
+    const path = nav && nav.path;
+    if (!pos || !path || !path.length) return null;
+    let chosen = null;
+    for (let i = 0; i < path.length; i++) {
+      const p = path[i];
+      if (!p || p.length < 3) continue;
+      const dist = Math.hypot(Number(p[1]) - pos.x, Number(p[2]) - pos.y);
+      if (Number(p[0]) !== Number(pos.level) || dist >= 1) {
+        chosen = { i: i, p: p, dist: dist };
+        break;
+      }
+    }
+    if (!chosen) return { turn: "arrive", dist: 0, bearing: null };
+    const px = Number(chosen.p[1]);
+    const py = Number(chosen.p[2]);
+    const pl = Number(chosen.p[0]);
+    const bearing = bearingDeg(pos.x, pos.y, px, py);
+    let turn = "straight";
+    if (pl !== Number(pos.level)) {
+      turn = pl > Number(pos.level) ? "stairs_up" : "stairs_down";
+    } else if (chosen.i + 1 >= path.length) {
+      turn = "arrive";
+    } else {
+      const fol = path[chosen.i + 1];
+      turn = turnBetween(bearing, bearingDeg(px, py, Number(fol[1]), Number(fol[2])));
+    }
+    return { turn: turn, dist: chosen.dist, bearing: bearing };
+  }
+
+  function refreshLocalGuide() {
+    if (live.hidden || !nav || nav.reachable === false || !pos) return;
+    const g = localGuide();
+    if (!g) return;
+    nav.turn = g.turn;
+    nav.distance_to_next_m = g.dist;
+    if (g.bearing != null) {
+      nav.heading_plan_deg = g.bearing;
+      const north = Number(building && building.plan_north_deg) || 0;
+      nav.heading_compass_deg = (north + g.bearing + 360) % 360;
+    }
+    if (g.turn === "arrive" && g.dist < 2) nav.next = null;
+    renderBanner();
+    const step = actionText(nav);
+    const key = coarseKey(step);
+    if (voiceOn && key && key !== lastStepKey) {
+      speak(step);
+      lastStepKey = key;
+    }
+  }
+
   function arrowRad() {
     if (!nav) return 0;
+    const g = localGuide();
+    const plan = g && g.bearing != null ? g.bearing : nav.heading_plan_deg;
     let deg = 0;
-    if (compassOn && phoneHeading != null && typeof nav.heading_compass_deg === "number") {
-      deg = nav.heading_compass_deg - phoneHeading;
-    } else if (typeof nav.heading_plan_deg === "number") {
-      deg = nav.heading_plan_deg;
+    if (compassOn && phoneHeading != null && plan != null) {
+      const north = Number(building && building.plan_north_deg) || 0;
+      deg = ((north + plan) - phoneHeading);
+    } else if (typeof plan === "number") {
+      deg = plan;
     }
     return deg * Math.PI / 180;
   }
@@ -1319,19 +1415,6 @@ window.__firesightCreateAgent = createFiresightAgent;
     }
     ctx.stroke();
 
-    if (grid && Number(grid.cell) > 0) {
-      const cell = Number(grid.cell);
-      ctx.fillStyle = "#ff4d3d";
-      for (const raw of fireCells(pos.level)) {
-        const rc = cellRC(raw);
-        if (!Number.isFinite(rc[0]) || !Number.isFinite(rc[1])) continue;
-        const x = Number(grid.origin_x) + rc[1] * cell;
-        const y = Number(grid.origin_y) + rc[0] * cell;
-        const side = Math.max(2, cell * s);
-        ctx.fillRect(X(x), Y(y), side, side);
-      }
-    }
-
     const path = (nav && nav.path) || [];
     ctx.beginPath();
     ctx.lineWidth = 3;
@@ -1348,15 +1431,22 @@ window.__firesightCreateAgent = createFiresightAgent;
     }
     ctx.stroke();
 
+    const ux = X(pos.x);
+    const uy = Y(pos.y);
     ctx.beginPath();
-    ctx.arc(X(pos.x), Y(pos.y), 6, 0, Math.PI * 2);
+    ctx.arc(ux, uy, 14, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(63,185,80,0.28)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ux, uy, 8, 0, Math.PI * 2);
     ctx.fillStyle = "#3fb950";
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeStyle = "#ffffff";
     ctx.stroke();
-
     ctx.fillStyle = "#ffffff";
+    ctx.font = "800 14px system-ui, sans-serif";
+    ctx.fillText("You", ux + 12, uy - 10);
     ctx.font = "700 12px system-ui, sans-serif";
     ctx.fillText("Floor " + pos.level, 8, 16);
   }
@@ -1373,14 +1463,146 @@ window.__firesightCreateAgent = createFiresightAgent;
     };
   }
 
+  let floorView = null;
+  let floorLoad = null;
+
+  function goHome() {
+    setWalking(false);
+    stopSpeak();
+    closeMap();
+    show("pick");
+    $("search").focus();
+  }
+
   function openMap() {
     mapArm = performance.now() + 450;
     mapFull.hidden = false;
-    requestAnimationFrame(() => drawMap($("mapBig")));
+    ensureFloor().then((view) => { if (view) view.sync(); });
   }
 
   function closeMap() {
     mapFull.hidden = true;
+  }
+
+  function ensureFloor() {
+    if (floorView) return Promise.resolve(floorView);
+    if (floorLoad) return floorLoad;
+    floorLoad = import("https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js")
+      .then((THREE) => {
+        floorView = makeFloorView(THREE);
+        return floorView;
+      })
+      .catch(() => null);
+    return floorLoad;
+  }
+
+  function makeFloorView(THREE) {
+    const host = $("floorStage");
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setClearColor(0x2a313c);
+    host.appendChild(renderer.domElement);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 800);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.95));
+    const lamp = new THREE.DirectionalLight(0xffffff, 0.55);
+    lamp.position.set(30, 50, 20);
+    scene.add(lamp);
+    const root = new THREE.Group();
+    scene.add(root);
+    const you = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.75, 2.4, 18),
+      new THREE.MeshStandardMaterial({ color: 0x3fb950, emissive: 0x146b2e })
+    );
+    body.position.y = 1.2;
+    const head = new THREE.Mesh(
+      new THREE.SphereGeometry(0.62, 18, 12),
+      new THREE.MeshStandardMaterial({ color: 0xd8ffe4, emissive: 0x3fb950 })
+    );
+    head.position.y = 2.7;
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.15, 1.55, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    const nose = new THREE.Mesh(
+      new THREE.ConeGeometry(0.42, 1.7, 12),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, 0.45, -1.7);
+    you.add(body, head, ring, nose);
+    scene.add(you);
+
+    function resize() {
+      const w = Math.max(2, host.clientWidth);
+      const h = Math.max(2, host.clientHeight);
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+
+    function sync() {
+      resize();
+      while (root.children.length) root.remove(root.children[0]);
+      if (!pos || !building) {
+        renderer.render(scene, camera);
+        return;
+      }
+      const fl = floorOf(pos.level);
+      if (fl && fl.outline && fl.outline.length >= 3) {
+        const shape = new THREE.Shape();
+        shape.moveTo(Number(fl.outline[0][0]), -Number(fl.outline[0][1]));
+        for (let i = 1; i < fl.outline.length; i++) {
+          shape.lineTo(Number(fl.outline[i][0]), -Number(fl.outline[i][1]));
+        }
+        const slab = new THREE.Mesh(
+          new THREE.ShapeGeometry(shape),
+          new THREE.MeshStandardMaterial({ color: 0x3d4654, side: THREE.DoubleSide })
+        );
+        slab.rotation.x = -Math.PI / 2;
+        root.add(slab);
+      }
+      const walls = (fl && fl.walls) || [];
+      const wallPos = [];
+      for (const wall of walls) {
+        if (!wall) continue;
+        const x1 = Number(wall.x1), y1 = Number(wall.y1), x2 = Number(wall.x2), y2 = Number(wall.y2);
+        if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+        wallPos.push(x1, 0.5, y1, x2, 0.5, y2);
+      }
+      if (wallPos.length) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(wallPos, 3));
+        root.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0xe6edf3 })));
+      }
+      const routePos = [];
+      const route = (nav && nav.path) || [];
+      for (const p of route) {
+        if (!p || Number(p[0]) !== Number(pos.level)) continue;
+        routePos.push(Number(p[1]), 0.4, Number(p[2]));
+      }
+      if (routePos.length >= 6) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.Float32BufferAttribute(routePos, 3));
+        root.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x58a6ff })));
+      }
+      you.position.set(pos.x, 0, pos.y);
+      const guide = localGuide();
+      const bear = guide && guide.bearing != null ? guide.bearing : 0;
+      const rad = bear * Math.PI / 180;
+      you.rotation.y = -rad;
+      const back = 18;
+      camera.position.set(pos.x - Math.sin(rad) * back, 16, pos.y + Math.cos(rad) * back);
+      camera.lookAt(pos.x, 1.2, pos.y);
+      renderer.render(scene, camera);
+      const cap = $("floorCaption");
+      if (cap) cap.textContent = "Floor " + pos.level + ". Green marker is you. Blue line is the way.";
+    }
+
+    return { sync: sync };
   }
 
   let toastTimer = 0;
@@ -1614,12 +1836,15 @@ window.__firesightCreateAgent = createFiresightAgent;
     show("pick");
     $("search").focus();
   });
+  $("btnHome").addEventListener("click", goHome);
+  $("btnMapHome").addEventListener("click", goHome);
 
   $("btnStart").addEventListener("click", async () => {
     const btn = $("btnStart");
     if (btn.disabled || !pos) return;
     btn.disabled = true;
     unlockAudio();
+    speakNow(nav ? speakLineFor(nav) : "Point your camera down the hall. Follow the arrow.");
     let permPromise;
     if (window.FiresightPDR) {
       initPDR();
@@ -1699,18 +1924,26 @@ window.__firesightCreateAgent = createFiresightAgent;
   });
 
   let lastT = 0;
+  let walkTickAt = 0;
   function frame(t) {
     const dt = lastT ? Math.min(0.1, (t - lastT) / 1000) : 0;
     lastT = t;
     if (posMode === "demo" && walking && pos && nav && !live.hidden && !isOut(nav)) {
+      const x0 = pos.x, y0 = pos.y, lv0 = pos.level;
       walk(dt);
       renderWhere();
+      const moved = Math.hypot(pos.x - x0, pos.y - y0) > 0.01 || pos.level !== lv0;
+      if (moved && t - walkTickAt > 600) {
+        walkTickAt = t;
+        tick();
+      }
     }
     if (!live.hidden) {
+      refreshLocalGuide();
       drawOverlay();
       drawMap($("minimap"));
     }
-    if (!mapFull.hidden) drawMap($("mapBig"));
+    if (!mapFull.hidden && floorView) floorView.sync();
     requestAnimationFrame(frame);
   }
 
