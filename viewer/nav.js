@@ -1,6 +1,6 @@
 (function () {
   try {
-    if (window.top !== window) return;
+    if (window.top !== window || /[?&]bare=1/.test(location.search)) return;
   } catch (e) {
     return;
   }

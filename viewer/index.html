@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Firesight 3D</title>
-<script>if (new URLSearchParams(location.search).get("embed") === "1") document.documentElement.classList.add("embed");</script>
+<script>{ const q = new URLSearchParams(location.search);
+  if (q.get("embed") === "1") document.documentElement.classList.add("embed");
+  if (q.get("bare") === "1") document.documentElement.classList.add("bare"); }</script>
 <style>
   :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --text:#e6edf3; --muted:#8b949e;
           --fire:#ff4d3d; --smoke:#d9a441; --safe:#3fb950; --route:#58a6ff; }
@@ -46,10 +48,23 @@
   html.embed #panel, html.embed #hint { display:none; }
   html.embed .lbl { color:#e7eef6; background:transparent; font-weight:500; padding:0;
                     text-shadow:0 1px 2px rgba(0,0,0,.7); }
+  #embedFire { display:none; }
+  html.bare #embedFire, html.bare .fsnav-btn, html.bare .fsnav-drawer, html.bare #toast { display:none !important; }
+  html.embed #embedFire { display:flex; gap:6px; align-items:center; position:fixed; top:8px; left:8px; z-index:5; }
+  html.embed #embedFire button { font-size:12px; padding:4px 8px; }
+  html.embed #embedFire .row { display:flex; gap:4px; align-items:center; margin:0; font-size:12px;
+    background:rgba(20,26,34,.75); color:#e7eef6; padding:3px 6px; border-radius:6px; }
+  html.embed #embedFire .row label { margin:0; white-space:nowrap; }
+  html.embed #embedFire #gap { width:80px; }
+  #btnEmbedIgnite.on { background:var(--fire); border-color:var(--fire); color:#fff; }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="embedFire">
+  <button type="button" id="btnEmbedIgnite">🔥 Click to start fire</button>
+  <button type="button" id="btnEmbedReset">Reset</button>
+</div>
 <div id="panel">
   <h1>Firesight</h1>
   <div class="sub" id="bname">Loading building…</div>
@@ -136,7 +151,7 @@ const SKIP_ID = /-U\d+$|VOID/;
 
 const app = document.getElementById("app");
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.5 : 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.25 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x2a313c);
 app.appendChild(renderer.domElement);
@@ -160,8 +175,10 @@ scene.add(sun);
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.25 : 1.5));
   renderer.setSize(innerWidth, innerHeight);
   labelRenderer.setSize(innerWidth, innerHeight);
+  requestRender();
 });
 
 let building = null, grid = null, levels = [];
@@ -170,6 +187,7 @@ let gap = 9;
 const floorGroups = new Map();
 const roomMeshes = new Map();
 const hazardMeshes = new Map();
+const hazardList = [];
 const plates = [];
 const walkMask = new Map();
 const solidMask = new Map();
@@ -236,7 +254,18 @@ const HALL_RING = 36;
 let lastStart = null, cachedRoute = null, cachedAll = null;
 let abOn = false, abStart = null, abEnd = null, abRoom = "";
 let playing = false, playToken = 0, playTick = 0, showAll = false, ignite = false, fireMode = "simulate";
-let lastState = null, labelsFar = false, labelDomDirty = true;
+let lastState = null, labelDomDirty = true;
+const labelObjs = [];
+const _labelPos = new THREE.Vector3();
+const embedGoal = new THREE.Vector3();
+const embedLook = new THREE.Vector3();
+const LABEL_MAX_M2 = 35 * 35;
+const LABEL_MAX_N = 40;
+const rankObj = new Array(LABEL_MAX_N);
+const rankD2 = new Float64Array(LABEL_MAX_N);
+let rankN = 0, labelMark = 0, labelsShowing = 0, labelVisAt = 0;
+let raf = 0, renderDirty = true, controlUntil = 0, inFrame = false;
+let statePollTimer = 0, statePollBusy = false, lastPollAt = 0;
 let chain = Promise.resolve();
 let toastTimer = null;
 
@@ -302,6 +331,10 @@ function clearGroup(g) {
       const list = Array.isArray(mat) ? mat : [mat];
       for (const m of list) if (m && !m.userData?.shared) mats.add(m);
     }
+    if (o.isCSS2DObject) {
+      const i = labelObjs.indexOf(o);
+      if (i >= 0) labelObjs.splice(i, 1);
+    }
     if (o.element && o.element.parentNode) o.element.remove();
   });
   for (const geo of geos) geo.dispose();
@@ -346,6 +379,7 @@ function makeLabel(text, full, x, y, z, color) {
   const lbl = new CSS2DObject(div);
   lbl.position.set(x, y, z);
   lbl.userData.isLabel = true;
+  labelObjs.push(lbl);
   return lbl;
 }
 
@@ -501,6 +535,7 @@ function buildBuilding() {
   floorGroups.clear();
   roomMeshes.clear();
   hazardMeshes.clear();
+  hazardList.length = 0;
   plates.length = 0;
   clearGroup(verticalGroup);
   clearGroup(routeGroup);
@@ -569,7 +604,9 @@ function buildBuilding() {
     smoke.frustumCulled = false;
     g.add(fire);
     g.add(smoke);
-    hazardMeshes.set(fl.level, { fire, smoke, fireCap: cap, smokeCap: cap });
+    const hm = { fire, smoke, fireCap: cap, smokeCap: cap };
+    hazardMeshes.set(fl.level, hm);
+    hazardList.push(hm);
 
     scene.add(g);
     floorGroups.set(fl.level, g);
@@ -1353,6 +1390,7 @@ function applyFloorFilter() {
     if (building && grid) addSingleFloorMarks(Number(embedLevel));
     applyLabelVisibility();
     labelDomDirty = true;
+    requestRender();
     return;
   }
   const v = $("floorSel").value;
@@ -1361,6 +1399,7 @@ function applyFloorFilter() {
   if (v !== "all" && building && grid) addSingleFloorMarks(Number(v));
   applyLabelVisibility();
   labelDomDirty = true;
+  requestRender();
 }
 
 function frameCamera() {
@@ -1373,31 +1412,87 @@ function frameCamera() {
   camera.updateProjectionMatrix();
   syncLabelDistance();
 }
-function labelFarLimit() {
-  if (!grid) return 80;
-  return Math.max(grid.cols, grid.rows) * grid.cell * 0.72;
-}
 function syncLabelDistance() {
-  const far = camera.position.distanceTo(controls.target) > labelFarLimit();
-  if (far !== labelsFar) labelDomDirty = true;
-  labelsFar = far;
+  labelVisAt = 0;
   applyLabelVisibility();
+  requestRender();
+}
+function owningFloor(o) {
+  let p = o.parent;
+  while (p) {
+    if (p.userData && p.userData.level != null && floorGroups.get(p.userData.level) === p) return p;
+    p = p.parent;
+  }
+  return null;
+}
+function floorShown(g) {
+  if (!g || !g.visible) return false;
+  if (EMBED && embedLevel != null) return Number(g.userData.level) === Number(embedLevel);
+  return true;
+}
+function labelFloorOk(o, allFloors) {
+  const fg = owningFloor(o);
+  if (fg) return floorShown(fg);
+  if (o.userData && o.userData.kind === "hall") return allFloors;
+  let y = o.position.y;
+  let p = o.parent;
+  while (p && p !== scene) { y += p.position.y; p = p.parent; }
+  const band = Math.max(gap * 0.65, 2);
+  for (const g of floorGroups.values()) {
+    if (floorShown(g) && Math.abs(y - g.position.y) < band) return true;
+  }
+  return false;
+}
+function rankInsert(o, d2) {
+  let i = rankN;
+  if (i < LABEL_MAX_N) rankN++;
+  else if (d2 >= rankD2[LABEL_MAX_N - 1]) return;
+  else i = LABEL_MAX_N - 1;
+  while (i > 0 && d2 < rankD2[i - 1]) {
+    rankD2[i] = rankD2[i - 1];
+    rankObj[i] = rankObj[i - 1];
+    i--;
+  }
+  rankD2[i] = d2;
+  rankObj[i] = o;
 }
 function applyLabelVisibility() {
-  const on = $("btnLabels").classList.contains("on") && (EMBED || !labelsFar);
+  const on = $("btnLabels").classList.contains("on");
   const allFloors = EMBED ? embedLevel == null : $("floorSel").value === "all";
-  const one = EMBED && embedLevel != null;
-  for (const [lv, g] of floorGroups) {
-    const show = on && g.visible && (!one || Number(lv) === Number(embedLevel));
-    g.traverse((o) => { if (o.isCSS2DObject) o.visible = show; });
-  }
   verticalGroup.traverse((o) => {
     if (o.userData && o.userData.kind === "hall" && !o.isCSS2DObject) o.visible = allFloors;
-    if (!o.isCSS2DObject) return;
-    let show = on && (o.userData.kind !== "hall" || allFloors);
-    if (show && one) show = Math.abs(o.position.y - levelY(embedLevel)) < gap * 0.65;
-    o.visible = show;
   });
+  let w = 0;
+  for (let i = 0; i < labelObjs.length; i++) {
+    if (labelObjs[i].parent) labelObjs[w++] = labelObjs[i];
+  }
+  labelObjs.length = w;
+  rankN = 0;
+  labelMark++;
+  if (on && w) scene.updateMatrixWorld(true);
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  for (let i = 0; i < w; i++) {
+    const o = labelObjs[i];
+    if (!on || !labelFloorOk(o, allFloors)) continue;
+    o.getWorldPosition(_labelPos);
+    const dx = _labelPos.x - cx, dy = _labelPos.y - cy, dz = _labelPos.z - cz;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    if (d2 < LABEL_MAX_M2) rankInsert(o, d2);
+  }
+  for (let i = 0; i < rankN; i++) rankObj[i].userData._lm = labelMark;
+  let changed = false;
+  for (let i = 0; i < w; i++) {
+    const o = labelObjs[i];
+    const next = on && o.userData._lm === labelMark;
+    if (o.visible !== next) { o.visible = next; changed = true; }
+  }
+  labelsShowing = rankN;
+  if (changed) labelDomDirty = true;
+}
+function maybeUpdateLabels(now) {
+  if (now - labelVisAt < 200) return;
+  labelVisAt = now;
+  applyLabelVisibility();
 }
 
 const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color(), GRAY = new THREE.Color(0x777777);
@@ -1458,6 +1553,7 @@ function applyState(state) {
     if (hm.smoke.instanceColor) hm.smoke.instanceColor.needsUpdate = true;
   }
   recolorStairs();
+  requestRender();
 }
 
 function rampClimb(pLo, pHi, y0, y1) {
@@ -1550,6 +1646,7 @@ function drawEmbedRoute(path) {
     end.position.copy(pts[pts.length - 1]);
     routeGroup.add(end);
   }
+  requestRender();
 }
 function embedHeadingNow() {
   const u = Math.min(1, (performance.now() - embedPose.t0) / embedPose.dur);
@@ -1589,6 +1686,7 @@ function applyEmbedPose(data) {
     embedLevel = level;
     applyFloorFilter();
   }
+  requestRender();
 }
 function onEmbedMessage(ev) {
   if (!EMBED) return;
@@ -1599,25 +1697,72 @@ function onEmbedMessage(ev) {
   if (!data || typeof data !== "object") return;
   if (data.type === "pose") applyEmbedPose(data);
   else if (data.type === "route") drawEmbedRoute(Array.isArray(data.path) ? data.path : []);
+  else if (data.type === "focus" || data.type === "focusRoom") focusSpace(String(data.id || ""));
+}
+// Fly to a room/stair by space id (command page "Ask" chips).
+function findSpaceMesh(id) {
+  if (roomMeshes.has(id)) return roomMeshes.get(id);
+  const low = id.toLowerCase();
+  for (const [k, m] of roomMeshes) if (k.toLowerCase().endsWith("-" + low) || k.toLowerCase() === low) return m;
+  return null;
+}
+let focusTok = 0;
+function focusSpace(id) {
+  const m = findSpaceMesh(id);
+  if (!m) { showToast("Not found on map: " + id); return; }
+  const lv = m.userData.level;
+  if (!EMBED || embedLevel == null) {
+    const sel = $("floorSel");
+    if ([...sel.options].some((o) => o.value === String(lv))) { sel.value = String(lv); applyFloorFilter(); }
+  }
+  scene.updateMatrixWorld(true);
+  const c = new THREE.Box3().setFromObject(m).getCenter(new THREE.Vector3());
+  const t0 = controls.target.clone(), p0 = camera.position.clone();
+  const t1 = c.clone(), p1 = new THREE.Vector3(c.x + 10, c.y + 16, c.z + 13);
+  const tok = ++focusTok, start = performance.now(), dur = 700;
+  const mat = m.material, e0 = mat.emissive ? mat.emissive.getHex() : null;
+  const step = () => {
+    if (tok !== focusTok) return;
+    const now = performance.now(), u = Math.min(1, (now - start) / dur), k = u * u * (3 - 2 * u);
+    controls.target.lerpVectors(t0, t1, k);
+    camera.position.lerpVectors(p0, p1, k);
+    const f = now - start;
+    if (mat.emissive) mat.emissive.setHex(f < 2400 && Math.floor(f / 300) % 2 === 0 ? 0x3fa0ff : e0);
+    labelVisAt = 0;
+    requestRender();
+    if (f < 2400) requestAnimationFrame(step);
+    else if (mat.emissive) { mat.emissive.setHex(e0); requestRender(); }
+  };
+  requestAnimationFrame(step);
 }
 function tickEmbed(now, dt) {
-  if (!embedPose.active) return;
-  const u = Math.min(1, (now - embedPose.t0) / embedPose.dur);
-  const k = u * u * (3 - 2 * u);
-  youGroup.position.lerpVectors(embedPose.from, embedPose.to, k);
-  if (embedPose.headOn) youCone.rotation.y = Math.PI - embedHeadingNow() * Math.PI / 180;
-  const pulse = 1 + 0.16 * Math.sin(now / 1000 * 4);
-  youRing.scale.set(pulse, pulse, pulse);
-  youRing.material.opacity = 0.4 + 0.5 * (0.5 + 0.5 * Math.sin(now / 1000 * 4));
-  youGlow.material.opacity = 0.18 + 0.16 * (0.5 + 0.5 * Math.sin(now / 1000 * 4));
-  if (!embedFollow) return;
-  const dist = grid ? Math.min(40, Math.max(16, Math.max(grid.cols, grid.rows) * grid.cell * 0.16)) : 22;
-  const p = youGroup.position;
-  const goal = new THREE.Vector3(p.x + dist * 0.55, p.y + dist * 0.7, p.z + dist * 0.72);
-  const look = new THREE.Vector3(p.x, p.y + 0.2, p.z);
-  const a = 1 - Math.exp(-dt / 0.55);
-  camera.position.lerp(goal, a);
-  controls.target.lerp(look, a);
+  let live = false;
+  if (embedPose.active) {
+    const u = Math.min(1, (now - embedPose.t0) / embedPose.dur);
+    const k = u * u * (3 - 2 * u);
+    youGroup.position.lerpVectors(embedPose.from, embedPose.to, k);
+    if (embedPose.headOn) youCone.rotation.y = Math.PI - embedHeadingNow() * Math.PI / 180;
+    if (u >= 1) embedPose.active = false;
+    else live = true;
+  }
+  if (youGroup.visible) {
+    const s = Math.sin(now * 0.004);
+    const pulse = 1 + 0.16 * s;
+    youRing.scale.set(pulse, pulse, pulse);
+    youRing.material.opacity = 0.4 + 0.5 * (0.5 + 0.5 * s);
+    youGlow.material.opacity = 0.18 + 0.16 * (0.5 + 0.5 * s);
+    live = true;
+  }
+  if (embedFollow && youGroup.visible) {
+    const dist = grid ? Math.min(40, Math.max(16, Math.max(grid.cols, grid.rows) * grid.cell * 0.16)) : 22;
+    const p = youGroup.position;
+    embedGoal.set(p.x + dist * 0.55, p.y + dist * 0.7, p.z + dist * 0.72);
+    embedLook.set(p.x, p.y + 0.2, p.z);
+    const a = 1 - Math.exp(-dt / 0.55);
+    camera.position.lerp(embedGoal, a);
+    controls.target.lerp(embedLook, a);
+  }
+  return live;
 }
 function drawTube(group, pts, color, radius) {
   const curve = new THREE.CurvePath();
@@ -1636,6 +1781,7 @@ function drawSelected(level, x, y, r) {
   const info = $("routeInfo");
   if (!r || !r.reachable) {
     info.innerHTML = `<div class="bad"><b>No safe route</b>: ${esc(r && r.reason ? r.reason : "unknown")}. Shelter in place and call 911.</div>`;
+    requestRender();
     return;
   }
   const pts = pathPoints(r.path);
@@ -1648,10 +1794,11 @@ function drawSelected(level, x, y, r) {
   const smokeNote = r.max_smoke > 0.35 ? `<div class="bad">Route passes through smoke. Stay low.</div>` : "";
   const items = (r.instructions || []).map((s) => `<li>${esc(s)}</li>`).join("");
   info.innerHTML = `<div class="good"><b>${esc(r.distance_m)} m</b> walking to <b>${esc(r.exit)}</b></div>${smokeNote}<ol>${items}</ol>`;
+  requestRender();
 }
 function drawAllLines(routes) {
   clearGroup(allRoutesGroup);
-  if (!showAll || !routes) return;
+  if (!showAll || !routes) { requestRender(); return; }
   const pos = [];
   for (const r of routes) {
     if (!r.reachable || !r.path || r.path.length < 2) continue;
@@ -1662,10 +1809,12 @@ function drawAllLines(routes) {
       pos.push(a.x, a.y, a.z, b.x, b.y, b.z);
     }
   }
-  if (!pos.length) return;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-  allRoutesGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f81f7 })));
+  if (pos.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    allRoutesGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x2f81f7 })));
+  }
+  requestRender();
 }
 function currentLoc() {
   return abStart || lastStart;
@@ -1734,6 +1883,7 @@ function clearAB() {
   if (!had) return;
   clearGroup(routeGroup);
   $("routeInfo").innerHTML = "";
+  requestRender();
   if (lastStart) enqueue(() => refreshSelected()).catch((e) => showToast(e.message));
 }
 async function armAB(level, x, y) {
@@ -1747,6 +1897,7 @@ async function armAB(level, x, y) {
     routeGroup.add(start);
     $("routeInfo").innerHTML = `<div class="k">Start set. Click the destination.</div>`;
     syncExitBtn();
+    requestRender();
     return;
   }
   abEnd = { level, x, y };
@@ -1862,11 +2013,15 @@ $("btnFire").onclick = () => {
     await afterFireChange();
   }).catch((e) => showToast(e.message));
 };
-$("btnIgnite").onclick = () => {
-  ignite = !ignite;
+function setIgnite(on) {
+  ignite = on;
   $("btnIgnite").classList.toggle("on", ignite);
+  $("btnEmbedIgnite").classList.toggle("on", ignite);
   renderer.domElement.style.cursor = ignite ? "crosshair" : "";
-};
+}
+$("btnIgnite").onclick = () => setIgnite(!ignite);
+$("btnEmbedIgnite").onclick = () => setIgnite(!ignite);
+$("btnEmbedReset").onclick = () => $("btnReset").click();
 function setFireMode(mode) {
   enqueue(async () => {
     await post("/api/fire/mode", { mode });
@@ -1897,6 +2052,13 @@ $("btnPlay").onclick = () => {
   $("btnPlay").classList.add("on");
   playLoop(token);
 };
+if (EMBED) {
+  const bar = $("embedFire");
+  bar.insertBefore($("btnPlay"), $("btnEmbedReset"));
+  bar.insertBefore($("btnStep"), $("btnPlay"));
+  bar.appendChild($("floorSel").closest(".row"));
+  bar.appendChild($("gap").closest(".row"));
+}
 $("gap").oninput = (e) => {
   gap = parseFloat(e.target.value);
   layoutFloors();
@@ -1932,6 +2094,7 @@ $("btnAll").onclick = () => {
   if (!showAll) {
     cachedAll = null;
     clearGroup(allRoutesGroup);
+    requestRender();
     return;
   }
   enqueue(() => refreshAll()).catch((e) => showToast(e.message));
@@ -1991,15 +2154,34 @@ async function boot() {
   const wallNote = levels.map((lv) => "F" + lv + ":" + (floorGroups.get(lv)?.userData.wallInstances || 0)).join(" ");
   console.info("wall instances (" + (displayGrid ? "display" : "solid") + ") " + wallNote);
   applyState(await api("/api/state"));
+  lastPollAt = performance.now();
+  startStatePoll();
 }
 
 let embedTap = 0, embedTapX = 0, embedTapY = 0, embedDownX = 0, embedDownY = 0, embedPrev = performance.now();
 let embedUser = false;
+controls.addEventListener("start", () => {
+  embedUser = true;
+  controlUntil = Infinity;
+  requestRender();
+});
+controls.addEventListener("end", () => {
+  embedUser = false;
+  controlUntil = performance.now() + 1200;
+  applyLabelVisibility();
+  labelVisAt = performance.now();
+  requestRender();
+});
+controls.addEventListener("change", () => {
+  if (EMBED && embedUser) embedFollow = false;
+  if (!inFrame) requestRender();
+});
+renderer.domElement.addEventListener("wheel", () => {
+  if (EMBED) embedFollow = false;
+  controlUntil = performance.now() + 1200;
+  requestRender();
+}, { passive: true });
 if (EMBED) {
-  controls.addEventListener("start", () => { embedUser = true; });
-  controls.addEventListener("end", () => { embedUser = false; });
-  controls.addEventListener("change", () => { if (embedUser) embedFollow = false; });
-  renderer.domElement.addEventListener("wheel", () => { embedFollow = false; }, { passive: true });
   renderer.domElement.addEventListener("pointerdown", (e) => {
     embedDownX = e.clientX;
     embedDownY = e.clientY;
@@ -2019,35 +2201,76 @@ if (EMBED) {
   window.addEventListener("message", onEmbedMessage);
   document.addEventListener("message", onEmbedMessage);
 }
+function pulseFire(now) {
+  const base = 0.7 + 0.25 * Math.sin(now * 0.006);
+  let any = false;
+  for (let i = 0; i < hazardList.length; i++) {
+    const hm = hazardList[i];
+    if (hm.fire.count <= 0) continue;
+    any = true;
+    const mul = hm.fire.material.userData.embedGhost ?? 1;
+    hm.fire.material.opacity = base * mul;
+  }
+  return any;
+}
+function requestRender() {
+  renderDirty = true;
+  if (document.visibilityState === "hidden") return;
+  if (!raf) raf = requestAnimationFrame(animate);
+}
 function animate() {
-  requestAnimationFrame(animate);
+  raf = 0;
   const now = performance.now();
   const dt = Math.min(0.05, (now - embedPrev) / 1000);
   embedPrev = now;
-  const t = now / 1000;
-  for (const hm of hazardMeshes.values()) {
-    const mul = hm.fire.material.userData.embedGhost ?? 1;
-    hm.fire.material.opacity = (0.7 + 0.25 * Math.sin(t * 6)) * mul;
-  }
-  if (EMBED) tickEmbed(now, dt);
-  if (grid) {
-    const far = camera.position.distanceTo(controls.target) > labelFarLimit();
-    if (far !== labelsFar) {
-      labelsFar = far;
-      applyLabelVisibility();
-      labelDomDirty = true;
+  const pulsing = pulseFire(now);
+  const follow = EMBED ? tickEmbed(now, dt) : false;
+  inFrame = true;
+  const camMoved = controls.update();
+  inFrame = false;
+  const damping = now < controlUntil;
+  if (camMoved || pulsing || follow || renderDirty) maybeUpdateLabels(now);
+  if (renderDirty || camMoved || pulsing || follow || labelDomDirty) {
+    renderer.render(scene, camera);
+    if (labelDomDirty || labelsShowing > 0) {
+      labelRenderer.render(scene, camera);
+      if (labelsShowing === 0) labelDomDirty = false;
     }
+    renderDirty = false;
   }
-  controls.update();
-  renderer.render(scene, camera);
-  const showLabels = $("btnLabels").classList.contains("on") && !labelsFar;
-  const showMarks = ghostGroup.children.length > 0;
-  if (showLabels || showMarks || labelDomDirty) {
-    labelRenderer.render(scene, camera);
-    if (!showLabels && !showMarks) labelDomDirty = false;
-  }
+  if (pulsing || follow || (damping && camMoved)) requestRender();
 }
-animate();
+async function pollStateOnce() {
+  if (document.visibilityState === "hidden" || statePollBusy) return;
+  const now = performance.now();
+  if (now - lastPollAt < 1900) return;
+  statePollBusy = true;
+  lastPollAt = now;
+  try { applyState(await api("/api/state", { cache: "no-store" })); }
+  catch (e) { /* keep the last frame */ }
+  finally { statePollBusy = false; }
+}
+function startStatePoll() {
+  if (statePollTimer || document.visibilityState === "hidden") return;
+  statePollTimer = setInterval(pollStateOnce, 2000);
+}
+function stopStatePoll() {
+  if (!statePollTimer) return;
+  clearInterval(statePollTimer);
+  statePollTimer = 0;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    stopStatePoll();
+    if (raf) { cancelAnimationFrame(raf); raf = 0; }
+  } else {
+    lastPollAt = 0;
+    pollStateOnce();
+    startStatePoll();
+    requestRender();
+  }
+});
+requestRender();
 boot().catch((e) => { $("bname").textContent = "Failed to load: " + e.message; console.error(e); });
 </script>
 <script src="nav.js" defer></script>

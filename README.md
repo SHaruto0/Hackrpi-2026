@@ -97,7 +97,6 @@ Open the printed `https://` URL on the phone.
 | `GEMINI_MODEL` | Gemini model. Default `gemini-3.1-pro-preview`. |
 | `FISH_API_KEY` | Required for speech synthesis and speech-to-text. A missing key returns HTTP 503. |
 | `FISH_VOICE_ID` | Occupant voice model id from `fish.audio/m/<id>`. This is not the Talk agent id. Left off the request when unset. |
-| `FISH_VOICE_ID_FF` | Firefighter voice model id, same form as `FISH_VOICE_ID`. Falls back to `FISH_VOICE_ID`. |
 | `FISH_MODEL` | Fish Audio TTS model header. Default `s2.1-pro`. |
 | `MONGODB_URI` | Atlas connection string. Unset: the event log and map versions are skipped, and `/api/history/*` except `/api/history/status` returns 503. |
 | `MONGODB_DB` | Atlas database name. Default `firesight`. |

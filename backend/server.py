@@ -170,11 +170,12 @@ def get_state():
 
 @app.post("/api/fire/start")
 def fire_start(room_id: str = Body(None, embed=True), level: int = Body(None, embed=True),
-               x: float = Body(None, embed=True), y: float = Body(None, embed=True)):
+               x: float = Body(None, embed=True), y: float = Body(None, embed=True),
+               whole: bool = Body(False, embed=True)):
     with lock:
         if room_id:
             try:
-                ok = world.sim.ignite_room(room_id)
+                ok = world.sim.ignite_room(room_id, whole=bool(whole))
             except KeyError:
                 raise HTTPException(404, f"Unknown room {room_id}")
         elif level is not None and x is not None and y is not None:
@@ -339,6 +340,16 @@ app.include_router(live.router)
 from .services.vps import make_router as _vps_router  # noqa: E402  (phone app /ws/ar + camera positioning)
 
 app.include_router(_vps_router(lambda: world, lock))
+
+@app.middleware("http")
+async def _no_stale_pages(request, call_next):
+    """Pages and their scripts revalidate every load, so edits show up (also inside iframes)."""
+    resp = await call_next(request)
+    p = request.url.path
+    if p.endswith((".html", ".js", "/")):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
 
 # Static viewer last so /api/* wins.
 if os.path.isdir(VIEWER_DIR):

@@ -3,8 +3,7 @@
 Env (never log these):
     FISH_API_KEY       required to synthesize. Missing key or API failure -> 503.
     FISH_MODEL         model header (default s2.1-pro)
-    FISH_VOICE_ID      occupant voice id. Omit reference_id when unset.
-    FISH_VOICE_ID_FF   firefighter voice id. Falls back to FISH_VOICE_ID.
+    FISH_VOICE_ID      the one voice for every role. Omit reference_id when unset.
 
 Clips are cached at data/tts_cache/<sha1(style|voice|text)>.mp3.
 Same text, style, and voice id are served from disk with no API call.
@@ -133,8 +132,6 @@ def _firefighter_sentence(sentence):
 
 def _voice_id(style):
     occupant = os.environ.get("FISH_VOICE_ID", "").strip()
-    if style == "firefighter":
-        return os.environ.get("FISH_VOICE_ID_FF", "").strip() or occupant
     return occupant
 
 

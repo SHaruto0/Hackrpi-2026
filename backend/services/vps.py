@@ -1179,7 +1179,7 @@ class ARClientSession:
         self.ws = ws
         self.person_id = f"phone-{idx}"
         self.role = "occupant"
-        self.target_room_id = "F2-240"
+        self.target_room_id = "F2-228"
         self.arkit_pos = [0.0, 0.0, 0.0]
         self.arkit_quat = [0.0, 0.0, 0.0, 1.0]
         self.heading = 0.0

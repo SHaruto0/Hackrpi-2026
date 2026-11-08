@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Animated,
+  Easing,
   StyleSheet,
   Text,
   View,
@@ -13,10 +14,11 @@ import {
   Platform,
   NativeModules,
   DeviceEventEmitter,
+  Vibration,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Magnetometer } from 'expo-sensors';
+import { Accelerometer, Magnetometer } from 'expo-sensors';
 import Svg, { Circle, Defs, G, LinearGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
 import {
@@ -27,15 +29,66 @@ import {
   useAudioRecorder,
 } from 'expo-audio';
 import * as Speech from 'expo-speech';
+
+// Push-to-talk recording. iOS: 16 kHz mono 16-bit WAV. The bit rate must equal
+// rate x depth x channels (256 kbps) or iOS fails with "unsupported data format".
+// Android (and the iOS fallback): AAC .m4a, 44.1 kHz mono.
+const TALK_AAC = {
+  extension: '.m4a',
+  sampleRate: 44100,
+  numberOfChannels: 1,
+  bitRate: 96000,
+  android: { outputFormat: 'mpeg4', audioEncoder: 'aac' },
+  ios: { outputFormat: 'aac ', audioQuality: 96 },
+  web: { mimeType: 'audio/webm', bitsPerSecond: 96000 },
+};
+const TALK_WAV = {
+  extension: '.wav',
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 256000,
+  android: { outputFormat: 'mpeg4', audioEncoder: 'aac' },
+  ios: {
+    outputFormat: 'lpcm',
+    audioQuality: 96,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: { mimeType: 'audio/webm', bitsPerSecond: 96000 },
+};
+const TALK_RECORDING = Platform.OS === 'ios' ? TALK_WAV : TALK_AAC;
 import appConfig from './app.json';
+import Constants from 'expo-constants';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
-const FALLBACK_SERVER_BASE = 'http://129.161.52.222:8000';
+function pulseTrappedHaptic() {
+  try {
+    const modName = 'expo-haptics';
+    const Haptics = require(modName);
+    if (Haptics?.notificationAsync && Haptics?.NotificationFeedbackType) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+  } catch (_) {}
+  try {
+    Vibration.vibrate(180);
+  } catch (_) {}
+}
+
+// Extra correction on top of the tilt-compensated compass (0 = none).
+const HEADING_OFFSET_DEG = 0;
+
+const FALLBACK_SERVER_BASE = 'http://129.161.93.234:8000';
 
 function defaultServerBase() {
   const raw = appConfig?.expo?.extra?.serverUrl;
   if (typeof raw === 'string' && raw.trim()) return raw.trim().replace(/\/$/, '');
+  // Dev: the laptop running Metro also runs the server on :8000.
+  const host = String(Constants?.expoConfig?.hostUri || Constants?.manifest2?.extra?.expoGo?.debuggerHost || '').split(':')[0];
+  // Only a LAN IP works; with `expo start --tunnel` the host is the tunnel domain, not the laptop.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return `http://${host}:8000`;
   return FALLBACK_SERVER_BASE;
 }
 
@@ -58,7 +111,9 @@ function createVoicePlayer(getContext) {
   let currentSound = null;
   let cancelPlayback = null;
   let closed = false;
+  let hushed = false;
   let audioReady = null;
+  const PRIORITY = new Set(['mayday', 'ff-report']);
 
   const releasePlayer = (player) => {
     if (!player) return;
@@ -136,6 +191,10 @@ function createVoicePlayer(getContext) {
     }
   };
 
+  // One voice for the whole session: Fish unless it fails twice in a row,
+  // then the device voice from then on. Never alternate between the two.
+  let engine = 'fish';
+  let fishFails = 0;
   const drain = async () => {
     if (playing || closed) return;
     const item = queue.shift();
@@ -143,10 +202,16 @@ function createVoicePlayer(getContext) {
     playing = true;
     playingSlot = item.slot;
     try {
-      try {
-        await speakFish(item.text);
-      } catch (_) {
-        if (!closed) await speakExpo(item.text, item.opts);
+      if (engine === 'fish') {
+        try {
+          await speakFish(item.text);
+          fishFails = 0;
+        } catch (_) {
+          fishFails += 1;
+          if (fishFails >= 2) engine = 'device';
+        }
+      } else if (!closed) {
+        await speakExpo(item.text, item.opts);
       }
     } finally {
       playing = false;
@@ -170,8 +235,12 @@ function createVoicePlayer(getContext) {
       for (let i = queue.length - 1; i >= 0; i--) {
         if (queue[i].slot === slot) queue.splice(i, 1);
       }
+      if (hushed) return;
+      // One voice at a time: the newest line replaces anything waiting,
+      // and interrupts the current one unless that one is urgent.
+      queue.length = 0;
       queue.push({ text: t, slot, opts });
-      if (playing && playingSlot === slot) {
+      if (playing && !PRIORITY.has(playingSlot)) {
         if (cancelPlayback) cancelPlayback();
         else {
           try {
@@ -180,6 +249,26 @@ function createVoicePlayer(getContext) {
         }
       }
       drain();
+    },
+    clear() {
+      queue.length = 0;
+      if (cancelPlayback) cancelPlayback();
+      try {
+        Speech.stop();
+      } catch (_) {}
+    },
+    hush(on) {
+      hushed = !!on;
+      if (!hushed) return;
+      queue.length = 0;
+      if (cancelPlayback) cancelPlayback();
+      const s = currentSound;
+      if (s) {
+        try { s.pause(); } catch (_) {}
+      }
+      try {
+        Speech.stop();
+      } catch (_) {}
     },
     close() {
       closed = true;
@@ -250,6 +339,24 @@ const QUICK_DCC_ROOMS = [
 ];
 
 // Audio cue voice lines (triggered by JSON flags from centralized backend)
+// ---- Demo script ---------------------------------------------------------
+// Marker starts in DCC 232 and only moves along the route (steps or the Walk
+// button). Facing is assumed to follow the path. It waits at the 218 doorway;
+// when Command sets 218 on fire the route flips, the app says "Turn around",
+// then "Go straight" down hallway 219. Set DEMO = false for real sensors.
+const DEMO = true;
+const DEMO_START = { level: 2, x: 40.06, y: 59.99 }; // 232 CLASSROOM
+// Before the fire the marker stops right before 218 LOBBY (its east edge is
+// x = 35.42 m) and waits there.
+const DEMO_STOP_X = 35.7;
+const inDemoRoom = (x) => x >= DEMO_STOP_X;
+const DEMO_SPEED_MPS = 1.2; // normal walking pace; drives marker + instructions over time
+const DEMO_TURN_MS = 3500;
+
+// Firefighter destination is fixed for the demo.
+const FF_TARGET_ROOM = 'F2-228';
+const FF_TARGET_LABEL = '228 VESTIBULE';
+
 const AUDIO_CUE_PHRASES = {
   'system_online.mp3': 'Firesight 3D D C C Navigation Online.',
   'hazard_ahead_rerouting.mp3': 'Warning! Fire hazard reported ahead. Rerouting path immediately.',
@@ -372,6 +479,24 @@ function buildArrow(nav, phoneHeading, compassOk, role) {
   if (state === 'left') return { state, label: 'Turn left' };
   if (state === 'around') return { state, label: 'Turn around' };
   return { state: 'straight', label: straightLabel(nav.distance_to_next_m) };
+}
+
+// Tilt-compensated heading of where the phone "looks": the back camera when held
+// upright, the top edge when flat. up = unit vector to the sky in device axes.
+function headingTilt(m, up) {
+  if (!m || !up) return null;
+  const ux = up.x, uy = up.y, uz = up.z;
+  // East = m x up, North = up x East (both horizontal).
+  const ex = m.y * uz - m.z * uy, ey = m.z * ux - m.x * uz, ez = m.x * uy - m.y * ux;
+  const en = Math.hypot(ex, ey, ez);
+  if (!(en > 1e-6)) return null;
+  const nx = uy * ez - uz * ey, ny = uz * ex - ux * ez, nz = ux * ey - uy * ex;
+  // Forward: top edge when flat (0,1,0), back camera when upright (0,0,-1).
+  const vx = 0, vy = uz, vz = -uy;
+  const e = vx * ex + vy * ey + vz * ez;
+  const n = vx * nx + vy * ny + vz * nz;
+  if (Math.hypot(e, n) < 1e-6) return null;
+  return norm360((Math.atan2(e / en, n / en) * 180) / Math.PI);
 }
 
 // Phone flat, portrait. Magnetometer +y is toward the top of the phone.
@@ -588,7 +713,7 @@ function FloorRibbon({ rel, turn, pulseOn, offCourse, width, height }) {
 
 export default function App() {
   const [permission, requestPermission] = useCameraPermissions();
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const audioRecorder = useAudioRecorder(TALK_RECORDING);
   const [cameraReady, setCameraReady] = useState(false);
   const [liveFrameUri, setLiveFrameUri] = useState(null);
   const [useStreamOverlay, setUseStreamOverlay] = useState(true);
@@ -598,7 +723,7 @@ export default function App() {
 
   // Task 1 ('occupant' -> Escape to Closest Exit) vs Task 2 ('firefighter' -> Navigate to Target Room + Report Fire)
   const [role, setRole] = useState('occupant');
-  const [targetRoomId, setTargetRoomId] = useState('F2-240');
+  const [targetRoomId, setTargetRoomId] = useState(FF_TARGET_ROOM);
   const [alertBanner, setAlertBanner] = useState(null);
 
   const [position, setPosition] = useState([0.0, 0.0, 0.0]);
@@ -612,9 +737,13 @@ export default function App() {
   const [phoneHeading, setPhoneHeading] = useState(null);
   const [compassOk, setCompassOk] = useState(false);
   const [mayday, setMayday] = useState(false);
+  const [trappedSent, setTrappedSent] = useState(false);
   const [showUrlBar, setShowUrlBar] = useState(false);
   const [unitName, setUnitName] = useState('Unit 1');
   const [talking, setTalking] = useState(false);
+  const [hudOpen, setHudOpen] = useState(true);
+  const upRef = useRef(null); // low-passed "up" vector in device axes
+  const [barOpen, setBarOpen] = useState(true);
   const [reportText, setReportText] = useState('');
   const [reportNote, setReportNote] = useState(null);
   const [toast, setToast] = useState('');
@@ -629,7 +758,13 @@ export default function App() {
   const roleRef = useRef(role);
   const targetRoomRef = useRef(targetRoomId);
   const unitRef = useRef('Unit 1');
-  const planRef = useRef({ level: ARKIT_DEFAULT_LEVEL, x: ARKIT_TO_DCC_X0, y: ARKIT_TO_DCC_Y0 });
+  const planRef = useRef(
+    DEMO ? { ...DEMO_START } : { level: ARKIT_DEFAULT_LEVEL, x: ARKIT_TO_DCC_X0, y: ARKIT_TO_DCC_Y0 }
+  );
+  const navRef = useRef(null);
+  const demoRef = useRef({ firstExit: null, holding: false, rerouted: false, turnUntil: 0, facing: null, timer: null, fetchAt: 0 });
+  const [demoWalking, setDemoWalking] = useState(false);
+  const [demoTurning, setDemoTurning] = useState(false);
   const recRef = useRef(null);
   const recStartRef = useRef(null);
   const scanLockRef = useRef(0);
@@ -642,6 +777,13 @@ export default function App() {
   const navSeqRef = useRef(0);
   const spokenStepRef = useRef(null);
   const phoneHeadingRef = useRef(null);
+  const personIdRef = useRef(`occ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+  const roomIdRef = useRef(currentRoomId);
+  const trappedFill = useRef(new Animated.Value(0)).current;
+  const trappedSentRef = useRef(false);
+  const trappedGen = useRef(0);
+  const commitTrappedRef = useRef(async () => {});
+  roomIdRef.current = currentRoomId;
   const mapPathRef = useRef([]);
   const mapPathKeyRef = useRef('');
   if (!voiceRef.current) {
@@ -690,7 +832,8 @@ export default function App() {
     });
   };
 
-  const rememberPlan = (level, x, y) => {
+  const rememberPlan = (level, x, y, src) => {
+    if (DEMO && src !== 'demo') return; // demo: only the scripted walk moves the marker
     const next = {
       level: Number.isFinite(Number(level)) ? Number(level) : ARKIT_DEFAULT_LEVEL,
       x: Number(x),
@@ -788,7 +931,8 @@ export default function App() {
             setLocalized(false);
             if (msg.latency_ms !== undefined) setLatencyMs(msg.latency_ms);
           }
-          if (msg.audio_cue && AUDIO_CUE_PHRASES[msg.audio_cue]) {
+          // Route cues duplicate the spoken step line; only mayday cues are voiced.
+          if (msg.audio_cue && /^mayday_/.test(msg.audio_cue) && AUDIO_CUE_PHRASES[msg.audio_cue]) {
             voiceRef.current.enqueue(AUDIO_CUE_PHRASES[msg.audio_cue], 'cue', {
               rate: 1.05,
               pitch: 0.95,
@@ -811,6 +955,61 @@ export default function App() {
       recRef.current = null;
       if (rec) rec.stop().catch(() => {});
     };
+  }, []);
+
+  // Dead reckoning: each step moves the marker along the compass heading.
+  // Camera (VPS) fixes from /ws/ar still overwrite planRef, so they correct drift.
+  useEffect(() => {
+    let sub = null;
+    const det = { lp: null, prev: null, armed: false, last: 0, amax: 0, amin: 0 };
+    const onStep = (lengthM) => {
+      if (DEMO) {
+        demoAdvanceRef.current(lengthM);
+        return;
+      }
+      const h = Number(phoneHeadingRef.current);
+      if (!Number.isFinite(h)) return;
+      const north = Number(planNorthRef.current) || 0;
+      const b = ((h - north) * Math.PI) / 180;
+      const p = planRef.current;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return;
+      pushPlan(p.level, p.x + lengthM * Math.sin(b), p.y - lengthM * Math.cos(b), { heading: h });
+    };
+    try {
+      Accelerometer.setUpdateInterval(50);
+      sub = Accelerometer.addListener((a) => {
+        if (!a) return;
+        const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0); // in g
+        // iOS reports gravity (points down), Android reports the reaction (points up).
+        const sgn = Platform.OS === 'ios' ? -1 : 1;
+        const g = upRef.current;
+        const k = g ? 0.1 : 1;
+        const gx = sgn * (a.x || 0), gy = sgn * (a.y || 0), gz = sgn * (a.z || 0);
+        const nx = g ? g.x + k * (gx - g.x) : gx, ny = g ? g.y + k * (gy - g.y) : gy, nz = g ? g.z + k * (gz - g.z) : gz;
+        const gl = Math.hypot(nx, ny, nz) || 1;
+        upRef.current = { x: nx / gl, y: ny / gl, z: nz / gl };
+        if (!Number.isFinite(mag)) return;
+        if (det.lp == null) { det.lp = det.prev = det.amax = det.amin = mag; return; }
+        const v = 0.25 * mag + 0.75 * det.lp;
+        det.lp = v;
+        det.amax = Math.max(det.amax, v);
+        det.amin = Math.min(det.amin, v);
+        const now = Date.now();
+        if (v < det.prev && det.prev > 1.08) det.armed = true;
+        if (det.armed && v < 0.96) {
+          det.armed = false;
+          if (now - det.last >= 280) {
+            det.last = now;
+            const amp = Math.max(0, (det.amax - det.amin) * 9.81);
+            const len = Math.min(0.9, Math.max(0.5, 0.47 * Math.pow(amp, 0.25)));
+            onStep(len);
+          }
+          det.amax = det.amin = v;
+        }
+        det.prev = v;
+      });
+    } catch (_) {}
+    return () => { if (sub) sub.remove(); };
   }, []);
 
   // Steps from the phone IMU. Same peak/dip detector as viewer/pdr.js.
@@ -959,8 +1158,8 @@ export default function App() {
     let alive = true;
     const smooth = { heading: null };
     const push = (deg) => {
-      if (!alive || !Number.isFinite(deg)) return;
-      const d = norm360(deg);
+      if (!alive || !Number.isFinite(deg) || DEMO) return;
+      const d = norm360(deg + HEADING_OFFSET_DEG);
       if (smooth.heading == null) smooth.heading = d;
       else {
         const delta = wrap180(d - smooth.heading);
@@ -980,7 +1179,8 @@ export default function App() {
         if (!alive || !available) return;
         Magnetometer.setUpdateInterval(100);
         sub = Magnetometer.addListener((m) => {
-          const deg = headingFromMag(m?.x, m?.y);
+          const tilt = headingTilt(m, upRef.current);
+          const deg = tilt != null ? tilt : headingFromMag(m?.x, m?.y);
           if (deg == null) return;
           push(deg);
         });
@@ -1016,7 +1216,12 @@ export default function App() {
       if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return;
       const base = serverHttpRef.current;
       const target = targetRoomRef.current;
-      const firefighter = roleRef.current === 'firefighter' && target;
+      const roleNow = roleRef.current;
+      if (roleNow === 'firefighter' && !target) {
+        setNav(null);
+        return;
+      }
+      const firefighter = roleNow === 'firefighter';
       const q = `level=${encodeURIComponent(level)}&x=${encodeURIComponent(x)}&y=${encodeURIComponent(y)}`;
       const url = firefighter
         ? `${base}/api/route_to?${q}&to_room=${encodeURIComponent(target)}`
@@ -1025,6 +1230,7 @@ export default function App() {
         const res = await fetch(url);
         const data = await res.json().catch(() => ({}));
         if (!alive || seq !== navSeqRef.current || !res.ok || !data) return;
+        if (roleRef.current !== roleNow) return;
         if (data.plan_north_deg != null) planNorthRef.current = Number(data.plan_north_deg) || 0;
         if (firefighter) {
           const north = await ensureNorth(base);
@@ -1035,9 +1241,9 @@ export default function App() {
             hints.next = null;
             hints.distance_to_next_m = 0;
           }
-          setNav({ ...data, ...hints });
+          setNav({ ...data, ...hints, _role: roleNow });
         } else {
-          setNav(data);
+          setNav({ ...data, _role: roleNow });
         }
       } catch (_) {}
     };
@@ -1063,7 +1269,12 @@ export default function App() {
   }, [phoneHeading]);
 
   useEffect(() => {
-    const path = Array.isArray(nav?.path) ? nav.path : Array.isArray(route?.path) ? route.path : [];
+    const raw = Array.isArray(nav?.path) ? nav.path : Array.isArray(route?.path) ? route.path : [];
+    // Start the drawn path at the marker itself.
+    const me = planRef.current;
+    const path = raw.length && me && Number.isFinite(me.x) && Number.isFinite(me.y)
+      ? [[me.level, me.x, me.y], ...raw]
+      : raw;
     const key = JSON.stringify(path);
     if (key === mapPathKeyRef.current) return;
     mapPathKeyRef.current = key;
@@ -1072,7 +1283,14 @@ export default function App() {
   }, [nav, route]);
 
   // Switch between Task 1 (Occupant Escape) and Task 2 (Firefighter Target Room)
-  const switchMode = (newRole, newTargetRoom = targetRoomId) => {
+  const switchMode = (newRole, _ignored) => {
+    const newTargetRoom = FF_TARGET_ROOM;
+    if (newRole !== roleRef.current) {
+      voiceRef.current.clear();
+      spokenStepRef.current = '';
+      setNav(null);
+      setRoute(null);
+    }
     setRole(newRole);
     roleRef.current = newRole;
     if (newTargetRoom) {
@@ -1165,6 +1383,7 @@ export default function App() {
   const startTalk = async () => {
     if (recRef.current || recStartRef.current) return;
     setTalking(true);
+    voiceRef.current.hush(true);
     const job = (async () => {
       const perm = await AudioModule.requestRecordingPermissionsAsync();
       if (!perm.granted) throw new Error('Mic permission needed');
@@ -1172,7 +1391,12 @@ export default function App() {
         allowsRecording: true,
         playsInSilentMode: true,
       });
-      await audioRecorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+      try {
+        await audioRecorder.prepareToRecordAsync(TALK_RECORDING);
+      } catch (first) {
+        if (Platform.OS !== 'ios') throw first;
+        await audioRecorder.prepareToRecordAsync(TALK_AAC);
+      }
       audioRecorder.record();
       recRef.current = audioRecorder;
     })();
@@ -1183,6 +1407,7 @@ export default function App() {
       recRef.current = null;
       recStartRef.current = null;
       setTalking(false);
+      voiceRef.current.hush(false);
       showToast(err?.message || 'Could not record');
     }
   };
@@ -1195,12 +1420,14 @@ export default function App() {
         await pending;
       } catch (_) {
         setTalking(false);
+        voiceRef.current.hush(false);
         return;
       }
     }
     const recording = recRef.current;
     recRef.current = null;
     setTalking(false);
+    voiceRef.current.hush(false);
     if (!recording) return;
     try {
       await recording.stop();
@@ -1208,17 +1435,32 @@ export default function App() {
         allowsRecording: false,
         playsInSilentMode: true,
       });
-      const uri = recording.uri;
+      let uri = recording.uri;
+      if (uri && !/^[a-z]+:\/\//i.test(uri)) uri = `file://${uri}`;
       if (!uri) throw new Error('No audio captured');
       const form = new FormData();
-      form.append('audio', { uri, name: 'report.m4a', type: 'audio/m4a' });
+      const wav = /\.wav$/i.test(uri) || /\.wav$/i.test(String(uri).split('?')[0]);
+      form.append('audio', { uri, name: wav ? 'report.wav' : 'report.m4a', type: wav ? 'audio/wav' : 'audio/mp4' });
       form.append('by', unitRef.current || '');
-      const res = await fetch(`${serverHttpRef.current}/api/reports/audio`, {
-        method: 'POST',
-        body: form,
+      // Expo's global fetch rejects React Native file parts ({ uri }) with
+      // "Unsupported FormDataPart implementation". XMLHttpRequest still uses the
+      // native uploader, which streams the file from its uri.
+      const { ok, data } = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${serverHttpRef.current}/api/reports/audio`);
+        xhr.timeout = 45000;
+        xhr.onload = () => {
+          let body = {};
+          try {
+            body = JSON.parse(xhr.responseText || '{}');
+          } catch (_) {}
+          resolve({ ok: xhr.status >= 200 && xhr.status < 300, data: body });
+        };
+        xhr.onerror = () => reject(new Error('Upload failed. Is the server reachable?'));
+        xhr.ontimeout = () => reject(new Error('Upload timed out'));
+        xhr.send(form);
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errorText(data, 'Report failed'));
+      if (!ok) throw new Error(errorText(data, 'Report failed'));
       showReport(data, '');
     } catch (err) {
       showToast(err?.message || 'Report failed');
@@ -1277,29 +1519,211 @@ export default function App() {
     }
   };
 
-  const sendMayday = (active) => {
-    setMayday(active);
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'mayday', active }));
-    }
-    if (active) {
-      voiceRef.current.enqueue(AUDIO_CUE_PHRASES['mayday_transmitting.mp3'], 'mayday', {
-        rate: 1.08,
-        pitch: 0.95,
+  commitTrappedRef.current = async () => {
+    if (trappedSentRef.current) return;
+    trappedSentRef.current = true;
+    trappedGen.current += 1;
+    trappedFill.setValue(1);
+    setTrappedSent(true);
+    setMayday(true);
+    pulseTrappedHaptic();
+    const { level, x, y } = planRef.current;
+    const id = personIdRef.current;
+    try {
+      await postJson(`/api/people/${encodeURIComponent(id)}/status`, {
+        status: 'trapped',
+        level,
+        x,
+        y,
+        room_id: roomIdRef.current || null,
       });
+    } catch (err) {
+      showToast(err?.message || 'Could not send trapped alert');
     }
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'mayday', active: true }));
+    }
+    voiceRef.current.enqueue('Help is coming.', 'mayday');
   };
 
-  const arrow = useMemo(
+  const beginTrappedHold = () => {
+    if (trappedSentRef.current) return;
+    const gen = ++trappedGen.current;
+    trappedFill.stopAnimation((value) => {
+      if (gen !== trappedGen.current || trappedSentRef.current) return;
+      const from = Number(value) || 0;
+      Animated.timing(trappedFill, {
+        toValue: 1,
+        duration: Math.max(16, Math.round(2000 * (1 - from))),
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        if (finished && gen === trappedGen.current) commitTrappedRef.current();
+      });
+    });
+  };
+
+  const cancelTrappedHold = () => {
+    if (trappedSentRef.current) return;
+    const gen = ++trappedGen.current;
+    trappedFill.stopAnimation((value) => {
+      if (gen !== trappedGen.current || trappedSentRef.current) return;
+      const from = Number(value) || 0;
+      if (from <= 0.001) {
+        trappedFill.setValue(0);
+        return;
+      }
+      Animated.timing(trappedFill, {
+        toValue: 0,
+        duration: Math.max(160, Math.round(2000 * from)),
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }).start();
+    });
+  };
+
+  const trappedFillWidth = trappedFill.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  const arrowLive = useMemo(
     () => buildArrow(nav, phoneHeading, compassOk, role),
     [nav, phoneHeading, compassOk, role]
   );
+  // Demo: during the scripted reroute the arrow always says turn around.
+  const arrow = demoTurning ? { state: 'around', label: 'Turn around' } : arrowLive;
+
+  // ---- Demo engine: walk along the route, face along it, scripted turn-around.
+  const demoAdvanceRef = useRef(() => {});
+  demoAdvanceRef.current = (dist) => {
+    const d = demoRef.current;
+    const n = navRef.current;
+    if (!DEMO || d.holding || Date.now() < d.turnUntil || !n || n.reachable === false) return;
+    const pts = (n.path || [])
+      .filter((p) => Array.isArray(p) && Number(p[0]) === Number(planRef.current.level))
+      .map((p) => ({ x: Number(p[1]), y: Number(p[2]) }));
+    if (pts.length < 2) return;
+    let { x, y } = planRef.current;
+    // Start from the path point nearest to the marker, then walk forward.
+    let k = 0;
+    let best = Infinity;
+    pts.forEach((p, i) => {
+      const dd = Math.hypot(p.x - x, p.y - y);
+      if (dd < best) {
+        best = dd;
+        k = i;
+      }
+    });
+    let left = dist;
+    for (let i = k + 1; i < pts.length && left > 0; i++) {
+      const seg = Math.hypot(pts[i].x - x, pts[i].y - y);
+      let nx;
+      let ny;
+      if (seg <= left) {
+        nx = pts[i].x;
+        ny = pts[i].y;
+      } else {
+        nx = x + ((pts[i].x - x) * left) / seg;
+        ny = y + ((pts[i].y - y) * left) / seg;
+      }
+      if (!d.rerouted && !inDemoRoom(nx)) {
+        // Stop right before entering 218 and wait for the fire.
+        d.holding = true;
+        setDemoWalking(false);
+        break;
+      }
+      left -= Math.min(seg, left);
+      x = nx;
+      y = ny;
+    }
+    const arrived = left > 0 && !d.holding;
+    rememberPlan(planRef.current.level, x, y, 'demo');
+    if (arrived) {
+      setDemoWalking(false);
+      voiceRef.current.enqueue("You're out. Go to the assembly point.", 'demo');
+    }
+    // Instructions follow the marker: refresh the route twice a second while walking.
+    const now = Date.now();
+    if (arrived || d.holding || now - d.fetchAt >= 500) {
+      d.fetchAt = now;
+      fetchNavRef.current();
+    }
+  };
+
+  const resetDemo = () => {
+    const d = demoRef.current;
+    if (d.timer) clearTimeout(d.timer);
+    demoRef.current = { firstExit: null, holding: false, rerouted: false, turnUntil: 0, facing: null, timer: null, fetchAt: 0 };
+    setDemoWalking(false);
+    setDemoTurning(false);
+    spokenStepRef.current = '';
+    voiceRef.current.clear();
+    rememberPlan(DEMO_START.level, DEMO_START.x, DEMO_START.y, 'demo');
+    fetchNavRef.current();
+  };
+
+  useEffect(() => {
+    if (!DEMO || !demoWalking) return undefined;
+    const id = setInterval(() => demoAdvanceRef.current(DEMO_SPEED_MPS * 0.1), 100);
+    return () => clearInterval(id);
+  }, [demoWalking]);
+
+  // Facing follows the route. A reroute that reverses it holds the old facing
+  // for a moment ("Turn around"), then turns ("Go straight").
+  useEffect(() => {
+    navRef.current = nav;
+    if (!DEMO || !nav || nav.reachable === false) return;
+    const d = demoRef.current;
+    const target = Number(nav.heading_compass_deg);
+    if (!Number.isFinite(target)) return;
+    if (d.firstExit == null) {
+      d.firstExit = nav.exit;
+      setDemoWalking(true); // start walking on its own, at walking pace
+    }
+    const now = Date.now();
+    if (now < d.turnUntil) return;
+    if (!d.rerouted && d.holding && nav.exit && d.firstExit && nav.exit !== d.firstExit) {
+      d.rerouted = true;
+      d.holding = false;
+      if (d.facing != null && Math.abs(wrap180(target - d.facing)) > 90) {
+        d.turnUntil = now + DEMO_TURN_MS;
+        setDemoTurning(true);
+        setDemoWalking(false);
+        voiceRef.current.enqueue('Fire in 218 ahead. Route blocked. Turn around.', 'demo');
+        d.timer = setTimeout(() => {
+          const t2 = Number(navRef.current && navRef.current.heading_compass_deg);
+          d.facing = Number.isFinite(t2) ? t2 : target;
+          phoneHeadingRef.current = d.facing;
+          setPhoneHeading(d.facing);
+          d.turnUntil = 0;
+          setDemoTurning(false);
+          const first = navRef.current && navRef.current.instructions && navRef.current.instructions[0];
+          spokenStepRef.current = first ? String(first).replace(/\s+/g, ' ').trim() : '';
+          voiceRef.current.enqueue('Go straight down hallway 219 to the exit.', 'demo');
+          setDemoWalking(true);
+        }, DEMO_TURN_MS);
+        return;
+      }
+      setDemoWalking(true); // small change of direction: just keep walking the new route
+    }
+    d.facing = target;
+    phoneHeadingRef.current = target;
+    setPhoneHeading(target);
+    setCompassOk(true);
+  }, [nav]);
 
   useEffect(() => {
     const line =
       nav && Array.isArray(nav.instructions) && nav.instructions[0]
         ? String(nav.instructions[0]).replace(/\s+/g, ' ').trim()
         : '';
+    // Speak only directions computed for the current mode.
+    if (!nav || nav._role !== roleRef.current) return;
+    if (DEMO && Date.now() < demoRef.current.turnUntil) {
+      spokenStepRef.current = line; // the scripted lines own the voice during the turn
+      return;
+    }
     if (!line || spokenStepRef.current === line) return;
     spokenStepRef.current = line;
     voiceRef.current.enqueue(line, 'nav-step');
@@ -1335,12 +1759,17 @@ export default function App() {
     );
   }
 
-  const primaryInstruction =
-    nav && Array.isArray(nav.instructions) && nav.instructions[0]
-      ? String(nav.instructions[0])
-      : arrow.label;
+  // First line is relative to where the marker faces: "Turn left, then walk 6 m ...".
+  const serverLine =
+    nav && Array.isArray(nav.instructions) && nav.instructions[0] ? String(nav.instructions[0]) : '';
+  const facingTurn = compassOk && ['left', 'right', 'around'].includes(arrow.state);
+  const primaryInstruction = !serverLine
+    ? arrow.label
+    : facingTurn
+    ? `${arrow.label}, then ${serverLine.charAt(0).toLowerCase()}${serverLine.slice(1)}`
+    : serverLine;
   const unreachable = (route && route.reachable === false) || (nav && nav.reachable === false);
-  const targetLabel = route?.target_exit || nav?.exit || (role === 'firefighter' ? targetRoomId : 'EXIT');
+  const targetLabel = role === 'firefighter' ? FF_TARGET_LABEL : route?.target_exit || nav?.exit || 'EXIT';
   const routeMeters = route?.total_distance_m ?? route?.distance_m ?? nav?.distance_m;
   const targetDeg = Number(
     nav && (nav.target_compass_deg != null ? nav.target_compass_deg : nav.heading_compass_deg)
@@ -1372,9 +1801,10 @@ export default function App() {
     pathTurn !== 'arrive' &&
     arrow.state !== 'blocked';
   const showPath = !!(nav && nav.reachable !== false && arrow.state !== 'blocked' && arrow.state !== 'finding');
-  const mapUri = `${httpServerBase(serverBase)}/index.html?embed=1`;
+  const mapUri = `${httpServerBase(serverBase)}/index.html?embed=1&bare=1`;
   const ribbonH = role === 'firefighter' ? SCREEN_H * 0.42 : SCREEN_H * 0.52;
-  const chipDist = legM != null ? `${legM} m` : routeMeters != null ? `${routeMeters} m` : '';
+  const chipM = legM != null ? legM : routeMeters != null ? Math.round(Number(routeMeters)) : null;
+  const chipDist = chipM != null ? `${chipM} m · ${Math.max(1, Math.round(chipM / DEMO_SPEED_MPS))} s` : '';
   const noteMapError = (nativeEvent) => {
     const desc = (nativeEvent && (nativeEvent.description || nativeEvent.title)) || 'Map failed to load';
     const code = nativeEvent && nativeEvent.statusCode;
@@ -1445,6 +1875,7 @@ export default function App() {
           ]}
         >
           {/* MODE SWITCHER: Task 1 (Occupant Escape) vs Task 2 (Firefighter Target Room) */}
+          {hudOpen ? (
           <View style={styles.modeSwitchRow}>
             <TouchableOpacity
               style={[styles.modeBtn, role === 'occupant' && styles.modeBtnOccupantActive]}
@@ -1459,6 +1890,7 @@ export default function App() {
               <Text style={styles.modeBtnText}>👨‍🚒 FIREFIGHTER MODE</Text>
             </TouchableOpacity>
           </View>
+          ) : null}
 
           <View style={styles.stepHud}>
             <Text style={styles.stepHudText} numberOfLines={2}>
@@ -1466,6 +1898,7 @@ export default function App() {
             </Text>
           </View>
 
+          {hudOpen ? (<>
           {/* Connection & VPS Lock Header */}
           <View style={styles.hudHeaderRow}>
             <View style={styles.statusBadge}>
@@ -1535,31 +1968,12 @@ export default function App() {
           <Text style={styles.locationLabel}>CURRENT LOCATION (DCC FLOOR 2)</Text>
           <Text style={styles.roomTitle}>{currentLabel.toUpperCase()}</Text>
 
-          {/* TASK 2: FIREFIGHTER TARGET ROOM SELECTOR */}
+          {/* TASK 2: FIREFIGHTER TARGET (fixed) */}
           {role === 'firefighter' && (
             <View style={styles.targetSelectorWrap}>
-              <Text style={styles.targetSelectorLabel}>SELECT TARGET ROOM TO NAVIGATE:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.roomChipScroll}>
-                {QUICK_DCC_ROOMS.map((rm) => {
-                  const isSelected = targetRoomId === rm.id;
-                  const isOnFire = fireRoomIds.has(rm.id);
-                  return (
-                    <TouchableOpacity
-                      key={rm.id}
-                      onPress={() => switchMode('firefighter', rm.id)}
-                      style={[
-                        styles.roomChip,
-                        isSelected && styles.roomChipSelected,
-                        isOnFire && styles.roomChipFire,
-                      ]}
-                    >
-                      <Text style={styles.roomChipText}>
-                        {isOnFire ? `🔥 ${rm.short}` : rm.short}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <Text style={styles.targetSelectorLabel}>
+                TARGET ROOM: {FF_TARGET_LABEL}{fireRoomIds.has(FF_TARGET_ROOM) ? '  🔥' : ''}
+              </Text>
             </View>
           )}
 
@@ -1594,6 +2008,10 @@ export default function App() {
               {routeMeters != null ? `${routeMeters}m` : '—'}
             </Text>
           </View>
+          </>) : null}
+          <TouchableOpacity style={styles.foldHandle} onPress={() => setHudOpen((v) => !v)} hitSlop={8}>
+            <Text style={styles.foldText}>{hudOpen ? '▲ hide' : '▼ more'}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
 
@@ -1604,9 +2022,26 @@ export default function App() {
         </View>
       ) : null}
 
+      {DEMO ? (
+        <View style={styles.demoPills}>
+          <TouchableOpacity
+            style={[styles.demoPill, demoWalking && styles.demoPillOn]}
+            onPress={() => setDemoWalking((v) => !v)}
+          >
+            <Text style={styles.demoPillText}>{demoWalking ? '■ Stop' : '▶ Walk'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.demoPill} onPress={resetDemo}>
+            <Text style={styles.demoPillText}>↺ 232</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* 5. BOTTOM ACTION BAR: Firefighter Live Fire Reporting OR Occupant Trapped/Mayday */}
       <View style={styles.bottomBar}>
-        {role === 'firefighter' ? (
+        <TouchableOpacity style={styles.foldHandleBar} onPress={() => setBarOpen((v) => !v)} hitSlop={8}>
+          <Text style={styles.foldText}>{barOpen ? '▼ hide' : role === 'firefighter' ? '▲ reports' : "▲ I'm trapped"}</Text>
+        </TouchableOpacity>
+        {!barOpen ? null : role === 'firefighter' ? (
           <View style={styles.ffStack}>
             <View style={styles.unitRow}>
               <Text style={styles.unitLabel}>UNIT</Text>
@@ -1675,13 +2110,13 @@ export default function App() {
         ) : (
           <TouchableOpacity
             activeOpacity={0.85}
-            onPressIn={() => sendMayday(true)}
-            onPressOut={() => sendMayday(false)}
-            style={[styles.maydayBtn, mayday && styles.maydayBtnActive]}
+            disabled={trappedSent}
+            onPressIn={beginTrappedHold}
+            onPressOut={cancelTrappedHold}
+            style={[styles.maydayBtn, trappedSent && styles.maydayBtnSent]}
           >
-            <Text style={styles.maydayText}>
-              {mayday ? '🚨 SENDING TRAPPED ALERT TO COMMAND...' : '🆘 HOLD IF TRAPPED / NEED RESCUE'}
-            </Text>
+            <Animated.View pointerEvents="none" style={[styles.maydayFill, { width: trappedFillWidth }]} />
+            <Text style={styles.maydayText}>{trappedSent ? 'Help is coming' : "I'm trapped"}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -2026,6 +2461,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mapErrorText: { color: '#fecaca', fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  foldHandle: { alignSelf: 'center', paddingTop: 4, paddingHorizontal: 14 },
+  foldHandleBar: {
+    alignSelf: 'center',
+    marginBottom: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(11, 15, 25, 0.8)',
+  },
+  foldText: { color: '#94a3b8', fontSize: 11, fontWeight: '700' },
   bottomBar: {
     position: 'absolute',
     bottom: 24,
@@ -2118,22 +2563,47 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
+  demoPills: { position: 'absolute', left: 14, bottom: 150, flexDirection: 'row', gap: 6 },
+  demoPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(11, 15, 25, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.5)',
+  },
+  demoPillOn: { backgroundColor: '#0e7490', borderColor: '#22d3ee' },
+  demoPillText: { color: '#e2e8f0', fontSize: 12, fontWeight: '700' },
   maydayBtn: {
     backgroundColor: '#b91c1c',
     paddingVertical: 16,
     borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 2,
     borderColor: '#f87171',
+    overflow: 'hidden',
   },
   maydayBtnActive: {
     backgroundColor: '#ef4444',
     borderColor: '#ffffff',
+  },
+  maydayBtnSent: {
+    backgroundColor: '#dc2626',
+    borderColor: '#dc2626',
+  },
+  maydayFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#ef4444',
   },
   maydayText: {
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.5,
+    zIndex: 1,
   },
 });

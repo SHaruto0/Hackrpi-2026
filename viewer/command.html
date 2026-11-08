@@ -104,6 +104,8 @@
   #buildSec { grid-area: build; --open-h: var(--build-h, 55vh); }
   #briefSec { grid-area: brief; }
   #askSec { grid-area: ask; }
+  .chip.jump { cursor:pointer; font:inherit; border:1px solid #2f81f7; }
+  .chip.jump:hover { background:#2f81f7; color:#fff; }
   #controlsSec { grid-area: controls; }
   #peopleSec { grid-area: people; }
   #timeSec { grid-area: timeline; }
@@ -648,10 +650,16 @@
     box.replaceChildren();
     if (!Array.isArray(ids)) return;
     for (const id of ids) {
-      const chip = document.createElement("span");
-      chip.className = "chip";
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip jump";
       chip.textContent = roomName(id) || String(id);
-      if (String(id) !== chip.textContent) chip.title = String(id);
+      chip.title = "Show " + id + " in 3D";
+      chip.onclick = () => {
+        const f = $("buildFrame");
+        if (f && f.contentWindow) f.contentWindow.postMessage({ type: "focus", id: String(id) }, "*");
+        if (f) f.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      };
       box.appendChild(chip);
     }
   }
@@ -850,7 +858,7 @@
   $("btnFire").addEventListener("click", () => runCtrl(async () => {
     const id = $("roomSel").value;
     if (!id) { setCtrl("Pick a room.", true); return; }
-    const { res, data } = await postJSON("/api/fire/start", { room_id: id });
+    const { res, data } = await postJSON("/api/fire/start", { room_id: id, whole: true });
     if (!res.ok) throw new Error(detailOf(data, "Could not start the fire."));
     setCtrl("Fire started in " + roomName(id) + ".");
     await pollLive();
@@ -1307,6 +1315,13 @@
     frame.contentWindow.postMessage({ type: "focusRoom", id: id }, "*");
   }
 
+  function locateFound(s) {
+    focusRoom(s.id);
+    $("findBox").hidden = true;
+    const f = $("buildFrame");
+    if (f) f.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   function pickFound(s) {
     findPick = s.id;
     selectedId = s.id;
@@ -1341,7 +1356,7 @@
 
   async function simFound(s) {
     try {
-      const { res, data } = await postJSON("/api/fire/start", { room_id: s.id });
+      const { res, data } = await postJSON("/api/fire/start", { room_id: s.id, whole: true });
       if (!res.ok) { setCtrl(detailOf(data, "Could not start the fire."), true); return; }
       setCtrl("Fire started in " + (s.label || s.id) + ".");
       await pollLive();
@@ -1387,6 +1402,7 @@
       act.className = "find-act";
       const num = roomNum(s);
       act.append(
+        findBtn("Locate in 3D", () => locateFound(s)),
         findBtn("Mark searched", () => reportFound(s, "Room " + num + " searched")),
         findBtn("Report fire", () => reportFound(s, "Fire in room " + num)),
         findBtn("Start sim fire", () => simFound(s)),
@@ -1409,6 +1425,18 @@
 
   $("roomFind").addEventListener("input", renderFind);
   $("roomFind").addEventListener("focus", renderFind);
+  $("roomFind").addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" || !building) return;
+    ev.preventDefault();
+    const q = $("roomFind").value;
+    const hits = namedRooms().filter((s) => matchRoom(s, q));
+    const exact = hits.find((s) => String(s.id).toLowerCase() === q.trim().toLowerCase() ||
+      String(s.id).toLowerCase().endsWith("-" + q.trim().toLowerCase()));
+    const s = exact || hits[0];
+    if (!s) return;
+    pickFound(s);
+    locateFound(s);
+  });
   $("modeSim").addEventListener("click", () => setFireMode("simulate"));
   $("modeRep").addEventListener("click", () => setFireMode("reports"));
 
