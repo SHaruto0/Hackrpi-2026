@@ -336,6 +336,10 @@ from .services.ai_edit import router as _ai_router  # noqa: E402
 app.include_router(_ai_router)
 app.include_router(live.router)
 
+from .services.vps import make_router as _vps_router  # noqa: E402  (phone app /ws/ar + camera positioning)
+
+app.include_router(_vps_router(lambda: world, lock))
+
 # Static viewer last so /api/* wins.
 if os.path.isdir(VIEWER_DIR):
     app.mount("/", StaticFiles(directory=VIEWER_DIR, html=True), name="viewer")

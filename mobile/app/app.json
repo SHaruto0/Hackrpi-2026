@@ -12,7 +12,9 @@
       }
     },
     "android": {
-      "permissions": ["CAMERA"]
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "plugins": [
       [
@@ -20,7 +22,8 @@
         {
           "cameraPermission": "Allow Firesight to use your camera for 3D visual positioning and AR navigation."
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

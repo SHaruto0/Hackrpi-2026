@@ -1,4 +1,8 @@
-"""Commander live feed. Sync callers use publish(); it no-ops with no clients."""
+"""Commander live feed.
+
+publish(kind, data) fans out to WebSocket clients (no-op when nobody is
+listening or the loop is down) and always notifies subscribe(fn) callbacks.
+"""
 import asyncio
 import json
 import threading
@@ -13,6 +17,7 @@ _PING_S = 20.0
 
 _guard = threading.Lock()
 _clients: set[WebSocket] = set()
+_subscribers: list = []
 _loop: asyncio.AbstractEventLoop | None = None
 _ping_task: asyncio.Task | None = None
 
@@ -31,11 +36,28 @@ def _ensure_ping() -> None:
     _ping_task = asyncio.get_running_loop().create_task(_ping_loop())
 
 
+def subscribe(fn) -> None:
+    """Call fn(kind, data) on the publisher's thread for every publish()."""
+    if not callable(fn):
+        return
+    with _guard:
+        if fn not in _subscribers:
+            _subscribers.append(fn)
+
+
 def publish(kind: str, data: dict) -> None:
-    """Queue one event from any thread. No-op when the loop is down or nobody is listening."""
+    """Queue one event from any thread. WebSocket send is a no-op when the loop is down or nobody is listening."""
     if not isinstance(data, dict):
         data = {}
-    payload = {"kind": str(kind), "data": data, "ts": time.time()}
+    kind = str(kind)
+    with _guard:
+        subs = tuple(_subscribers)
+    for fn in subs:
+        try:
+            fn(kind, data)
+        except Exception:
+            pass
+    payload = {"kind": kind, "data": data, "ts": time.time()}
     try:
         text = json.dumps(payload, separators=(",", ":"))
     except (TypeError, ValueError):

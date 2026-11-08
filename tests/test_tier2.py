@@ -71,10 +71,10 @@ def test_qr_print_html():
     assert "text/html" in res.headers["content-type"]
     html = res.text
     assert "qrcode" in html.lower()
-    assert f"{base}/phone.html?qr=F1-102" in html
-    assert "phone.html?qr=F1-EastStairs" not in html
-    assert "phone.html?qr=F1-WestStairs" not in html
-    assert "phone.html?qr=F1-Elevator" not in html
+    assert "FIRESIGHT:F1-102" in html
+    assert "FIRESIGHT:F1-EastStairs" not in html
+    assert "FIRESIGHT:F1-WestStairs" not in html
+    assert "FIRESIGHT:F1-Elevator" not in html
 
 
 def test_nav_keys_and_heading():

@@ -107,9 +107,7 @@ class RouteField:
         while nodes[-1] != goal and pred[nodes[-1]] != NO_PRED and len(nodes) < 1_000_000:
             nodes.append(int(pred[nodes[-1]]))
         cells = [g.unflat(k) for k in nodes]
-        steps = self._instructions(cells, nodes)
-        if steps and steps[-1].startswith("Exit the building"):
-            steps[-1] = "You have arrived"
+        steps = self._instructions(cells, nodes, arrive="Walk {d} m{where} to arrive")
         return {"reachable": True, "reason": "", "path": self._simplify(cells),
                 "distance_m": round(self._length(cells), 1),
                 "max_smoke": round(float(max(self.smoke[c] for c in cells)), 2), "instructions": steps}
@@ -176,36 +174,69 @@ class RouteField:
             out.append([g.levels[fi], round(x, 2), round(y, 2)])
         return out
 
-    def _instructions(self, cells, nodes):
+    def _instructions(self, cells, nodes, arrive="Walk {d} m{where} to exit {exit}"):
+        """Turn-by-turn steps from the path shape: "Walk 3 m, then turn left", "Take Stair 3 down to floor 1",
+        "Walk 7 m to the exit". Grid zig-zags are smoothed first (Douglas-Peucker, 0.75 m)."""
         g = self.grid
+        runs, cur = [], [0]
+        for i in range(1, len(cells)):
+            if cells[i][0] != cells[i - 1][0]:
+                runs.append(cur); cur = [i]
+            else:
+                cur.append(i)
+        runs.append(cur)
+        xy = lambda k: g.center_of(cells[k][1], cells[k][2])
+
+        def rdp(idx, eps=0.75):
+            if len(idx) < 3:
+                return idx
+            a, b = xy(idx[0]), xy(idx[-1])
+            L = math.dist(a, b) or 1e-9
+            far, fk = -1.0, 0
+            for k in range(1, len(idx) - 1):
+                p = xy(idx[k])
+                d = abs((b[0] - a[0]) * (a[1] - p[1]) - (a[0] - p[0]) * (b[1] - a[1])) / L
+                if d > far:
+                    far, fk = d, k
+            if far <= eps:
+                return [idx[0], idx[-1]]
+            return rdp(idx[:fk + 1], eps)[:-1] + rdp(idx[fk:], eps)
+
+        def where(k0, k1):              # room the walk mostly passes through ("through 218 LOBBY")
+            rid = int(g.room[cells[(k0 + k1) // 2]])
+            if rid < 0:
+                return ""
+            info = g.rooms[rid]
+            return f" through {info['label'] if info['type'] != 'hallway' else 'the hallway ' + info['label'].split(' ')[0]}"
+
         steps = []
-        seg_room, seg_len = None, 0.0
-
-        def flush():
-            if seg_room is not None and seg_len >= 1.0:
-                info = g.rooms[seg_room]
-                name = info["label"] if info["type"] != "hallway" else f"the hallway ({info['label']})"
-                steps.append(f"Walk {round(seg_len)} m through {name}")
-
-        for i, (fi, r, c) in enumerate(cells):
-            if i > 0:
-                pfi, pr, pc = cells[i - 1]
-                if pfi != fi:
-                    flush(); seg_room, seg_len = None, 0.0
-                    name = self.link_names.get((nodes[i - 1], nodes[i]), "stairs")
-                    direction = "down" if fi < pfi else "up"
-                    steps.append(f"Take {name} {direction} to floor {g.levels[fi]}")
-                    continue
-                seg_len += g.cell * math.hypot(r - pr, c - pc)
-            rid = int(g.room[fi, r, c])
-            if rid != -1 and rid != seg_room:
-                if seg_room is not None:
-                    flush()
-                    seg_len = 0.0
-                seg_room = rid
-        flush()
-        exit_id = self.exit_ids.get(nodes[-1], "the exit")
-        steps.append(f"Exit the building at {exit_id}")
+        for n, run in enumerate(runs):
+            ids = rdp(run)
+            pts = [xy(k) for k in ids]
+            dist, k0 = 0.0, ids[0]
+            for i in range(1, len(pts)):
+                dist += math.dist(pts[i - 1], pts[i])
+                if i == len(pts) - 1:
+                    break
+                d1 = (pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])
+                d2 = (pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+                ang = math.degrees(math.atan2(d1[0] * d2[1] - d1[1] * d2[0], d1[0] * d2[0] + d1[1] * d2[1]))
+                if abs(ang) < 35 or math.dist(pts[i], pts[i + 1]) < 1.0:
+                    continue            # y points down, so a positive cross product is a right turn
+                side = "right" if ang > 0 else "left"
+                turn = f"turn {'slightly ' if abs(ang) < 60 else ''}{side}" if abs(ang) < 150 else "turn around"
+                steps.append(f"Walk {max(1, round(dist))} m{where(k0, ids[i])}, then {turn}")
+                dist, k0 = 0.0, ids[i]
+            if n < len(runs) - 1:
+                a, b = run[-1], runs[n + 1][0]
+                if dist >= 1.0:
+                    steps.append(f"Walk {round(dist)} m{where(k0, run[-1])} to the stairs")
+                name = self.link_names.get((nodes[a], nodes[b]), "the stairs")
+                direction = "down" if cells[b][0] < cells[a][0] else "up"
+                steps.append(f"Take {name} {direction} to floor {g.levels[cells[b][0]]}")
+            else:
+                exit_id = self.exit_ids.get(nodes[-1], "")
+                steps.append(arrive.format(d=max(1, round(dist)), where=where(k0, run[-1]), exit=exit_id))
         return steps
 
 

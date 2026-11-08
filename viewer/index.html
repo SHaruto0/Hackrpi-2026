@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Firesight 3D</title>
+<script>if (new URLSearchParams(location.search).get("embed") === "1") document.documentElement.classList.add("embed");</script>
 <style>
   :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --text:#e6edf3; --muted:#8b949e;
           --fire:#ff4d3d; --smoke:#d9a441; --safe:#3fb950; --route:#58a6ff; }
@@ -42,6 +43,9 @@
   #tip { position:fixed; z-index:7; display:none; pointer-events:none; background:#21262d; color:var(--text);
          border:1px solid var(--line); border-radius:4px; padding:3px 6px; font-size:12px; max-width:240px; }
   @media (max-width: 640px) { #panel { width:calc(100% - 24px); max-height:45%; } #hint { display:none; } }
+  html.embed #panel, html.embed #hint { display:none; }
+  html.embed .lbl { color:#e7eef6; background:transparent; font-weight:500; padding:0;
+                    text-shadow:0 1px 2px rgba(0,0,0,.7); }
 </style>
 </head>
 <body>
@@ -117,6 +121,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
 
+const EMBED = new URLSearchParams(location.search).get("embed") === "1";
 const API = "";
 const WALL_H = 1.2;
 const STEP_N = 12;
@@ -131,7 +136,7 @@ const SKIP_ID = /-U\d+$|VOID/;
 
 const app = document.getElementById("app");
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, EMBED ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.setClearColor(0x2a313c);
 app.appendChild(renderer.domElement);
@@ -179,6 +184,43 @@ wallUnit.userData.shared = true;
 let verticalGroup = new THREE.Group(); scene.add(verticalGroup);
 let ghostGroup = new THREE.Group(); scene.add(ghostGroup);
 let routeGroup = new THREE.Group(); scene.add(routeGroup);
+const youGroup = new THREE.Group();
+youGroup.visible = false;
+youGroup.renderOrder = 4;
+const youDot = new THREE.Mesh(
+  new THREE.SphereGeometry(0.36, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x3b82f6 })
+);
+const youGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.72, 16, 12),
+  new THREE.MeshBasicMaterial({ color: 0x60a5fa, transparent: true, opacity: 0.32, depthWrite: false })
+);
+const youRingGeo = new THREE.RingGeometry(0.52, 0.74, 40);
+youRingGeo.rotateX(-Math.PI / 2);
+const youRing = new THREE.Mesh(youRingGeo, new THREE.MeshBasicMaterial({
+  color: 0x58a6ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false,
+}));
+youRing.position.y = 0.06;
+const youConeGeo = new THREE.ConeGeometry(0.9, 2.6, 28, 1, true);
+youConeGeo.translate(0, 1.15, 0);
+youConeGeo.rotateX(Math.PI / 2);
+const youCone = new THREE.Mesh(youConeGeo, new THREE.MeshBasicMaterial({
+  color: 0x7cb4ff, transparent: true, opacity: 0.28, depthWrite: false, side: THREE.DoubleSide,
+}));
+youCone.visible = false;
+youGroup.add(youGlow, youDot, youRing, youCone);
+scene.add(youGroup);
+let embedLevel = null, embedPath = null, embedFollow = true, pendingPose = null;
+const embedPose = {
+  active: false,
+  from: new THREE.Vector3(),
+  to: new THREE.Vector3(),
+  t0: 0,
+  dur: 460,
+  headOn: false,
+  headFrom: 0,
+  headTo: 0,
+};
 let allRoutesGroup = new THREE.Group(); scene.add(allRoutesGroup);
 const stepUnit = new THREE.BoxGeometry(1, 1, 1);
 stepUnit.userData.shared = true;
@@ -542,7 +584,8 @@ function layoutFloors() {
   buildFlightSteps();
   applyFloorFilter();
   if (lastState) applyState(lastState);
-  if (lastStart && cachedRoute) drawSelected(lastStart.level, lastStart.x, lastStart.y, cachedRoute);
+  if (EMBED && embedPath) drawEmbedRoute(embedPath);
+  else if (lastStart && cachedRoute) drawSelected(lastStart.level, lastStart.x, lastStart.y, cachedRoute);
   if (cachedAll) drawAllLines(cachedAll);
 }
 
@@ -1274,7 +1317,44 @@ function addSingleFloorMarks(lv) {
     ghostGroup.add(makeLabel(text, text, p[0], levelY(lv) + 2.6, p[1], "#8fdf9a"));
   }
 }
+function setFloorGhost(group, ghost) {
+  const mul = ghost ? 0.2 : 1;
+  group.traverse((obj) => {
+    if (!obj.material || obj.isCSS2DObject) return;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (m.userData && m.userData.shared) continue;
+      if (m.userData._op0 == null) {
+        m.userData._op0 = m.opacity;
+        m.userData._tr0 = m.transparent;
+        m.userData._dw0 = m.depthWrite;
+      }
+      m.userData.embedGhost = mul;
+      if (ghost) {
+        m.transparent = true;
+        m.opacity = m.userData._op0 * mul;
+        m.depthWrite = false;
+      } else {
+        m.opacity = m.userData._op0;
+        m.transparent = m.userData._tr0;
+        m.depthWrite = m.userData._dw0;
+      }
+      m.needsUpdate = true;
+    }
+  });
+}
 function applyFloorFilter() {
+  if (EMBED && embedLevel != null && floorGroups.size) {
+    for (const [lv, g] of floorGroups) {
+      g.visible = true;
+      setFloorGhost(g, Number(lv) !== Number(embedLevel));
+    }
+    clearGroup(ghostGroup);
+    if (building && grid) addSingleFloorMarks(Number(embedLevel));
+    applyLabelVisibility();
+    labelDomDirty = true;
+    return;
+  }
   const v = $("floorSel").value;
   for (const [lv, g] of floorGroups) g.visible = v === "all" || String(lv) === v;
   clearGroup(ghostGroup);
@@ -1304,14 +1384,19 @@ function syncLabelDistance() {
   applyLabelVisibility();
 }
 function applyLabelVisibility() {
-  const on = $("btnLabels").classList.contains("on") && !labelsFar;
-  const allFloors = $("floorSel").value === "all";
-  for (const g of floorGroups.values()) {
-    g.traverse((o) => { if (o.isCSS2DObject) o.visible = on && g.visible; });
+  const on = $("btnLabels").classList.contains("on") && (EMBED || !labelsFar);
+  const allFloors = EMBED ? embedLevel == null : $("floorSel").value === "all";
+  const one = EMBED && embedLevel != null;
+  for (const [lv, g] of floorGroups) {
+    const show = on && g.visible && (!one || Number(lv) === Number(embedLevel));
+    g.traverse((o) => { if (o.isCSS2DObject) o.visible = show; });
   }
   verticalGroup.traverse((o) => {
     if (o.userData && o.userData.kind === "hall" && !o.isCSS2DObject) o.visible = allFloors;
-    if (o.isCSS2DObject) o.visible = on && (o.userData.kind !== "hall" || allFloors);
+    if (!o.isCSS2DObject) return;
+    let show = on && (o.userData.kind !== "hall" || allFloors);
+    if (show && one) show = Math.abs(o.position.y - levelY(embedLevel)) < gap * 0.65;
+    o.visible = show;
   });
 }
 
@@ -1450,6 +1535,89 @@ function pathPoints(path) {
     out.push(new THREE.Vector3(x, levelY(lv) + 0.35, y));
   }
   return out;
+}
+function drawEmbedRoute(path) {
+  embedPath = path || [];
+  if (!grid) return;
+  clearGroup(routeGroup);
+  const pts = pathPoints(embedPath);
+  if (pts.length >= 2) drawTube(routeGroup, pts, COLORS.route, 0.22);
+  if (pts.length) {
+    const end = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 12, 8),
+      new THREE.MeshBasicMaterial({ color: COLORS.safe })
+    );
+    end.position.copy(pts[pts.length - 1]);
+    routeGroup.add(end);
+  }
+}
+function embedHeadingNow() {
+  const u = Math.min(1, (performance.now() - embedPose.t0) / embedPose.dur);
+  const k = u * u * (3 - 2 * u);
+  let d = ((embedPose.headTo - embedPose.headFrom + 540) % 360) - 180;
+  return embedPose.headFrom + d * k;
+}
+function applyEmbedPose(data) {
+  const level = Number(data.level), x = Number(data.x), y = Number(data.y);
+  if (!Number.isFinite(level) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  if (!grid) { pendingPose = data; return; }
+  pendingPose = null;
+  const dest = new THREE.Vector3(x, levelY(level) + 0.45, y);
+  const shownHead = embedPose.headOn ? embedHeadingNow() : null;
+  if (!embedPose.active) {
+    youGroup.position.copy(dest);
+    embedPose.from.copy(dest);
+  } else {
+    embedPose.from.copy(youGroup.position);
+  }
+  embedPose.to.copy(dest);
+  embedPose.t0 = performance.now();
+  embedPose.active = true;
+  youGroup.visible = true;
+  const hasHead = data.heading_deg != null && data.heading_deg !== "" && Number.isFinite(Number(data.heading_deg));
+  if (hasHead) {
+    const h = Number(data.heading_deg);
+    embedPose.headFrom = shownHead == null ? h : shownHead;
+    embedPose.headTo = h;
+    embedPose.headOn = true;
+    youCone.visible = true;
+  } else {
+    embedPose.headOn = false;
+    youCone.visible = false;
+  }
+  if (Number(embedLevel) !== level) {
+    embedLevel = level;
+    applyFloorFilter();
+  }
+}
+function onEmbedMessage(ev) {
+  if (!EMBED) return;
+  let data = ev.data;
+  if (typeof data === "string") {
+    try { data = JSON.parse(data); } catch (e) { return; }
+  }
+  if (!data || typeof data !== "object") return;
+  if (data.type === "pose") applyEmbedPose(data);
+  else if (data.type === "route") drawEmbedRoute(Array.isArray(data.path) ? data.path : []);
+}
+function tickEmbed(now, dt) {
+  if (!embedPose.active) return;
+  const u = Math.min(1, (now - embedPose.t0) / embedPose.dur);
+  const k = u * u * (3 - 2 * u);
+  youGroup.position.lerpVectors(embedPose.from, embedPose.to, k);
+  if (embedPose.headOn) youCone.rotation.y = Math.PI - embedHeadingNow() * Math.PI / 180;
+  const pulse = 1 + 0.16 * Math.sin(now / 1000 * 4);
+  youRing.scale.set(pulse, pulse, pulse);
+  youRing.material.opacity = 0.4 + 0.5 * (0.5 + 0.5 * Math.sin(now / 1000 * 4));
+  youGlow.material.opacity = 0.18 + 0.16 * (0.5 + 0.5 * Math.sin(now / 1000 * 4));
+  if (!embedFollow) return;
+  const dist = grid ? Math.min(40, Math.max(16, Math.max(grid.cols, grid.rows) * grid.cell * 0.16)) : 22;
+  const p = youGroup.position;
+  const goal = new THREE.Vector3(p.x + dist * 0.55, p.y + dist * 0.7, p.z + dist * 0.72);
+  const look = new THREE.Vector3(p.x, p.y + 0.2, p.z);
+  const a = 1 - Math.exp(-dt / 0.55);
+  camera.position.lerp(goal, a);
+  controls.target.lerp(look, a);
 }
 function drawTube(group, pts, color, radius) {
   const curve = new THREE.CurvePath();
@@ -1818,15 +1986,50 @@ async function boot() {
     $("warn").textContent = building.warnings.join("\n");
   }
   buildBuilding();
+  if (EMBED && pendingPose) applyEmbedPose(pendingPose);
+  if (EMBED && embedPath) drawEmbedRoute(embedPath);
   const wallNote = levels.map((lv) => "F" + lv + ":" + (floorGroups.get(lv)?.userData.wallInstances || 0)).join(" ");
   console.info("wall instances (" + (displayGrid ? "display" : "solid") + ") " + wallNote);
   applyState(await api("/api/state"));
 }
 
+let embedTap = 0, embedTapX = 0, embedTapY = 0, embedDownX = 0, embedDownY = 0, embedPrev = performance.now();
+let embedUser = false;
+if (EMBED) {
+  controls.addEventListener("start", () => { embedUser = true; });
+  controls.addEventListener("end", () => { embedUser = false; });
+  controls.addEventListener("change", () => { if (embedUser) embedFollow = false; });
+  renderer.domElement.addEventListener("wheel", () => { embedFollow = false; }, { passive: true });
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    embedDownX = e.clientX;
+    embedDownY = e.clientY;
+  });
+  renderer.domElement.addEventListener("pointerup", (e) => {
+    if (Math.hypot(e.clientX - embedDownX, e.clientY - embedDownY) > 10) { embedTap = 0; return; }
+    const now = performance.now();
+    if (now - embedTap < 340 && Math.hypot(e.clientX - embedTapX, e.clientY - embedTapY) < 30) {
+      embedFollow = true;
+      embedTap = 0;
+    } else {
+      embedTap = now;
+      embedTapX = e.clientX;
+      embedTapY = e.clientY;
+    }
+  });
+  window.addEventListener("message", onEmbedMessage);
+  document.addEventListener("message", onEmbedMessage);
+}
 function animate() {
   requestAnimationFrame(animate);
-  const t = performance.now() / 1000;
-  for (const hm of hazardMeshes.values()) hm.fire.material.opacity = 0.7 + 0.25 * Math.sin(t * 6);
+  const now = performance.now();
+  const dt = Math.min(0.05, (now - embedPrev) / 1000);
+  embedPrev = now;
+  const t = now / 1000;
+  for (const hm of hazardMeshes.values()) {
+    const mul = hm.fire.material.userData.embedGhost ?? 1;
+    hm.fire.material.opacity = (0.7 + 0.25 * Math.sin(t * 6)) * mul;
+  }
+  if (EMBED) tickEmbed(now, dt);
   if (grid) {
     const far = camera.position.distanceTo(controls.target) > labelFarLimit();
     if (far !== labelsFar) {

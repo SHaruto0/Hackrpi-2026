@@ -6,3 +6,12 @@ __pycache__/
 .team/
 data/tts_cache/
 data/debug/
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+/*.mp3

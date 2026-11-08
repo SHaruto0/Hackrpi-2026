@@ -39,6 +39,17 @@ backend/
     cortex.py               Snowflake Cortex (SNOWFLAKE_ACCOUNT, SNOWFLAKE_PAT): /api/brief (template fallback), /api/ask (RAG)
     reports.py              firefighter field reports: Fish ASR /api/voice/stt -> rule parser -> apply to world
                             (fire/smoke/clear/searched/blocked/open/victim) -> reroute; /api/reports*, undo
+    vps.py                  camera positioning (SuperPoint+LightGlue / ORB vs data/vps/final_model, 200 level) +
+                            /ws/ar (mobile app: pose in, route/banner/audio out; pushed on every fire/report/people event)
+    live.py                 /ws/live event bus (publish/subscribe): people, report, fire, building
+    ai_edit.py              Gemini map-edit chat for the editor (+ instant rule commands)
+mobile/
+  app/                      React Native (Expo) phone app; server base URL in app.json extra.serverUrl
+  ios/                      native SwiftUI + ARKit prototype
+data/vps/final_model/       COLMAP map + descriptors for camera positioning (from the merged hackrpi-compute repo)
+scripts/vps/                VPS map building scripts (build_map.py, build_poses.py, ...)
+archive/                    old duplicate compute server + React dashboard (replaced by backend/ + /command.html)
+Dockerfile, docker-compose.yml, deploy/vultr.md, requirements-vps.txt   hosting (VPS=1 adds torch/lightglue)
 viewer/
   index.html                Three.js 3D viewer (stacked floors, fire/smoke tiles, routes)
   editor.html               2D map editor (doors, exits, walls, rooms, stairs, scale; Apply/Save/Check)

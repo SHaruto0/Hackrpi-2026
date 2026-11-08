@@ -1,0 +1,41 @@
+services:
+  firesight:
+    build:
+      context: .
+      args:
+        VPS: ${VPS:-0}
+    environment:
+      FIRESIGHT_BUILDING: ${FIRESIGHT_BUILDING:-data/buildings/dcc.json}
+      FISH_API_KEY: ${FISH_API_KEY:-}
+      FISH_MODEL: ${FISH_MODEL:-}
+      FISH_VOICE_ID: ${FISH_VOICE_ID:-}
+      FISH_VOICE_ID_FF: ${FISH_VOICE_ID_FF:-}
+      MONGODB_URI: ${MONGODB_URI:-}
+      MONGODB_DB: ${MONGODB_DB:-firesight}
+      SNOWFLAKE_ACCOUNT: ${SNOWFLAKE_ACCOUNT:-}
+      SNOWFLAKE_PAT: ${SNOWFLAKE_PAT:-}
+      SNOWFLAKE_MODEL: ${SNOWFLAKE_MODEL:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_API_VERSION: ${GEMINI_API_VERSION:-}
+      GEMINI_EDIT_MODEL: ${GEMINI_EDIT_MODEL:-}
+    volumes:
+      - ./data/vps/final_model:/app/data/vps/final_model:ro
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - firesight
+    ports:
+      - "80:80"
+      - "443:443"
+    command: ["reverse-proxy", "--from", "${SITE}", "--to", "firesight:8000"]
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
