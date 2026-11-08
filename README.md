@@ -88,6 +88,33 @@ cloudflared tunnel --url http://localhost:8000
 
 Open the printed `https://` URL on the phone.
 
+### Mobile app (Expo) with ngrok
+
+Campus Wi-Fi like eduroam blocks phone-to-laptop traffic, so the app shows SERVER OFFLINE on the laptop's LAN IP. Put the server behind ngrok instead.
+
+1. Start the server (above) and leave it running.
+2. In a second terminal, tunnel the server. First time only: make a free account at https://dashboard.ngrok.com and add your token.
+
+   ```bash
+   ngrok config add-authtoken <your-token>   # first time only
+   ngrok http 8000
+   ```
+
+   Copy the `Forwarding https://....ngrok-free.dev` URL.
+3. Set `expo.extra.serverUrl` in `mobile/app/app.json` to that URL. The app turns it into `wss://.../ws/ar` by itself.
+4. In a third terminal, start Expo. The Expo tunnel needs a free Expo account.
+
+   ```bash
+   cd mobile/app
+   npm install
+   npx expo login                # first time only
+   npx expo start --tunnel -c
+   ```
+
+5. Scan the QR code with Expo Go. If the app still says SERVER OFFLINE, tap Server, paste the ngrok URL and tap Connect.
+
+The ngrok URL changes every time ngrok restarts, so update `serverUrl` (or use Server > Connect) each time. Open the commander view on the laptop at http://localhost:8000/command.html, not through ngrok. On a phone hotspot (laptop and phone on the same network) you can skip ngrok and use `http://<laptop-ip>:8000`.
+
 ### Environment variables
 
 | Name | Role |

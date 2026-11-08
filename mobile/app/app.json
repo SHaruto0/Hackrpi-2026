@@ -26,7 +26,7 @@
       "expo-audio"
     ],
     "extra": {
-      "serverUrl": "http://129.161.93.234:8000"
+      "serverUrl": "https://nolan-nonperturbing-ela.ngrok-free.dev"
     }
   }
 }
