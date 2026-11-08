@@ -344,7 +344,8 @@ const QUICK_DCC_ROOMS = [
 // button). Facing is assumed to follow the path. It waits at the 218 doorway;
 // when Command sets 218 on fire the route flips, the app says "Turn around",
 // then "Go straight" down hallway 219. Set DEMO = false for real sensors.
-const DEMO = true;
+// const DEMO = true; // scripted 232 -> 218 walk (hardcoded path), commented out
+const DEMO = false;   // position comes from the camera (VPS) again
 const DEMO_START = { level: 2, x: 40.06, y: 59.99 }; // 232 CLASSROOM
 // Before the fire the marker stops right before 218 LOBBY (its east edge is
 // x = 35.42 m) and waits there.

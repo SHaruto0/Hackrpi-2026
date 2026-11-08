@@ -111,6 +111,15 @@ Campus Wi-Fi like eduroam blocks phone-to-laptop traffic, so the app shows SERVE
    npx expo start --tunnel -c
    ```
 
+   If `npx expo login` fails (for example, an account made with Google or GitHub has no password), use an access token instead. Create one at https://expo.dev/accounts/[account]/settings/access-tokens (replace `[account]` with your Expo username), then:
+
+   ```powershell
+   $env:EXPO_TOKEN = "<your-token>"   # macOS/Linux: export EXPO_TOKEN=<your-token>
+   npx expo start --tunnel -c
+   ```
+
+   Never commit the token.
+
 5. Scan the QR code with Expo Go. If the app still says SERVER OFFLINE, tap Server, paste the ngrok URL and tap Connect.
 
 The ngrok URL changes every time ngrok restarts, so update `serverUrl` (or use Server > Connect) each time. Open the commander view on the laptop at http://localhost:8000/command.html, not through ngrok. On a phone hotspot (laptop and phone on the same network) you can skip ngrok and use `http://<laptop-ip>:8000`.
